@@ -74,6 +74,11 @@ var stroke_active := false
 # Current stroke record
 var _current_record: Dictionary = {}
 
+# Throttled image-updated signaling
+const IMAGE_UPDATED_INTERVAL_MS: int = 250
+var _image_update_pending: bool = false
+var _last_image_emit_ts_ms: int = 0
+
 func _ready() -> void:
 	Input.use_accumulated_input = false
 	tools = PaintToolsState.new()
@@ -83,6 +88,8 @@ func _ready() -> void:
 	# Initialize view origin to current placement of DrawingArea (if any), then apply transform
 	view_origin = drawing_area.position
 	_apply_view_transform()
+	# Initialize image update throttle clock
+	_last_image_emit_ts_ms = Time.get_ticks_msec()
 
 func _init_canvas() -> void:
 	# Bind TextureRect to canvas state
@@ -192,6 +199,9 @@ func _input(event: InputEvent) -> void:
 			_set_zoom(target_zoom, get_viewport().get_mouse_position())
 
 func _process(_dt: float) -> void:
+	# Flush pending image-updated signal at most once per interval
+	_maybe_emit_image_update()
+
 	var mouse_pos_vp: Vector2 = get_viewport().get_mouse_position()
 	var area_rect_vp := _display_rect_vp()
 	is_mouse_in_drawing_area = area_rect_vp.has_point(mouse_pos_vp)
@@ -224,6 +234,9 @@ func _process(_dt: float) -> void:
 		last_paint_pos = Vector2.INF
 
 	last_mouse_pos = mouse_pos_vp
+
+	# In case there was no input this frame but an update is pending, try again
+	_maybe_emit_image_update()
 
 # ---- Raster painting ---------------------------------------------------------
 
@@ -399,8 +412,20 @@ func _blend_pixel(x: int, y: int, col: Color, a: float) -> void:
 
 func _update_texture() -> void:
 	canvas.canvas_tex.update(canvas.canvas_img)
+	# Mark that an image update occurred; emission is throttled from _process
+	_image_update_pending = true
+
+func _maybe_emit_image_update() -> void:
+	if not _image_update_pending:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_image_emit_ts_ms < IMAGE_UPDATED_INTERVAL_MS:
+		return
+	# Emit both the local and canvas-level signals once
 	image_updated.emit(canvas.canvas_img)
 	canvas.emit_image_updated()
+	_last_image_emit_ts_ms = now
+	_image_update_pending = false
 
 # ---- View transform helpers -------------------------------------------------
 
