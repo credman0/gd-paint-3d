@@ -78,6 +78,7 @@ var stroke_active := false
 
 # Current stroke record
 var _current_record: Dictionary = {}
+var _last_crayon_stamp: Vector2i = Vector2i(-1, -1)
 
 # Throttled image-updated signaling
 const IMAGE_UPDATED_INTERVAL_MS: int = 250
@@ -384,13 +385,23 @@ func _paint_line(from_vp: Vector2, to_vp: Vector2) -> void:
 
 	var pts: PackedVector2Array = Geometry2D.bresenham_line(Vector2(p0), Vector2(p1))
 	if pts.is_empty():
-		_stamp_and_log_point(p1)
+		# Single-point stamp; for crayon honor spacing gate
+		if tools.brush_mode == BrushModes.CRAYON:
+			var size_px: int = tools.size_from_pressure(tools.brush_size)
+			if _crayon_ok_to_stamp(p1, size_px):
+				_stamp_and_log_point(p1)
+		else:
+			_stamp_and_log_point(p1)
 		_update_texture()
 		return
 
 	# canvas image locked per call in stamp methods
 	for p in pts:
 		var pi: Vector2i = Vector2i(p)
+		if tools.brush_mode == BrushModes.CRAYON:
+			var size_px: int = tools.size_from_pressure(tools.brush_size)
+			if not _crayon_ok_to_stamp(pi, size_px):
+				continue
 		_stamp_at_unsafe(pi)
 		_log_point(pi)
 	# unlock handled inside stamp functions when needed
@@ -604,6 +615,20 @@ func _fill_circle_crayon_unsafe(center: Vector2i, r: int, col: Color) -> void:
 				var a: float = base * _crayon_grain(x, y) * center_boost
 				_blend_pixel(x, y, col, a)
 
+# Crayon stamp spacing gate: reduce overdraw frequency to preserve texture
+func _crayon_ok_to_stamp(pix: Vector2i, size_px: int) -> bool:
+	if _last_crayon_stamp.x < 0:
+		_last_crayon_stamp = pix
+		return true
+	var r: int = max(1, size_px >> 1)
+	var min_step: int = max(1, int(r * 0.8))
+	var dx: int = pix.x - _last_crayon_stamp.x
+	var dy: int = pix.y - _last_crayon_stamp.y
+	if dx * dx + dy * dy >= min_step * min_step:
+		_last_crayon_stamp = pix
+		return true
+	return false
+
 func _update_texture() -> void:
 	canvas.canvas_tex.update(canvas.canvas_img)
 	# Mark that an image update occurred; emission is throttled from _process
@@ -661,6 +686,7 @@ func _set_zoom(target: float, pivot_vp: Vector2) -> void:
 
 func _begin_record() -> void:
 	_current_record.clear()
+	_last_crayon_stamp = Vector2i(-1, -1)
 	if tools.brush_mode == BrushModes.PEN or tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.CRAYON or tools.brush_mode == BrushModes.ERASER:
 		var rec: Dictionary = {
 			"kind": "stroke",
