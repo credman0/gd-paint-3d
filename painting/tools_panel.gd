@@ -2,6 +2,10 @@ extends Panel
 
 @onready var depth_label: Label = %LabelCanvasDepth
 @onready var brush_settings = %BrushSettings
+@onready var label_opacity_above: Label = %LabelOpacityAbove
+@onready var label_opacity_below: Label = %LabelOpacityBelow
+@onready var slider_opacity_above: HSlider = %OpacityAboveSlider
+@onready var slider_opacity_below: HSlider = %OpacityBelowSlider
 @onready var label_brush_size = %LabelBrushSize
 @onready var label_brush_shape = %LabelBrushShape
 @onready var label_stats = %LabelStats
@@ -80,6 +84,13 @@ func _ready():
 		res_apply_btn.pressed.connect(_on_apply_resolution)
 	# Initialize resolution fields from active canvas
 	_update_resolution_fields()
+
+	# Wire and init opacity falloff sliders (Above/Below)
+	if slider_opacity_above:
+		slider_opacity_above.value_changed.connect(_on_above_falloff_changed)
+	if slider_opacity_below:
+		slider_opacity_below.value_changed.connect(_on_below_falloff_changed)
+	_init_opacity_values_from_paint()
 
 
 func _physics_process(_delta):
@@ -250,6 +261,42 @@ func _on_canvas_depth_changed(index: int, value: float) -> void:
 		depth_slider.set_block_signals(false)
 
 	_update_depth_label()
+
+func _init_opacity_values_from_paint() -> void:
+	if paint_control == null:
+		return
+	# Read current falloff values if available, else defaults
+	var above := 0.7
+	var below := 0.7
+	if paint_control.has_method(&"get_preview_above_falloff"):
+		above = float(paint_control.get_preview_above_falloff())
+	if paint_control.has_method(&"get_preview_below_falloff"):
+		below = float(paint_control.get_preview_below_falloff())
+	if slider_opacity_above:
+		slider_opacity_above.set_block_signals(true)
+		slider_opacity_above.value = clampf(above, 0.0, 1.0)
+		slider_opacity_above.set_block_signals(false)
+	if slider_opacity_below:
+		slider_opacity_below.set_block_signals(true)
+		slider_opacity_below.value = clampf(below, 0.0, 1.0)
+		slider_opacity_below.set_block_signals(false)
+	_update_opacity_labels()
+
+func _on_above_falloff_changed(value: float) -> void:
+	if paint_control and paint_control.has_method(&"set_preview_above_falloff"):
+		paint_control.set_preview_above_falloff(float(value))
+	_update_opacity_labels()
+
+func _on_below_falloff_changed(value: float) -> void:
+	if paint_control and paint_control.has_method(&"set_preview_below_falloff"):
+		paint_control.set_preview_below_falloff(float(value))
+	_update_opacity_labels()
+
+func _update_opacity_labels() -> void:
+	if label_opacity_above and slider_opacity_above:
+		label_opacity_above.text = "Opacity above falloff: %d%%" % int(round(slider_opacity_above.value * 100.0))
+	if label_opacity_below and slider_opacity_below:
+		label_opacity_below.text = "Opacity below falloff: %d%%" % int(round(slider_opacity_below.value * 100.0))
 
 func _update_depth_label() -> void:
 	if depth_label and paint_control:

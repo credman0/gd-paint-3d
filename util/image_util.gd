@@ -222,7 +222,7 @@ static func compute_combined_bounds(images: Array, alpha_threshold := 0.5) -> Re
 # Crops each image to the given bounding box and uniformly scales the cropped region
 # so that it fits within target_size while preserving aspect ratio.
 # Returns a new Array of Images, one per input image. Areas outside the image bounds
-# during cropping are treated as transparent.
+# during cropping are treated as transparent. Each returned image has exactly target_size.
 # If bbox is empty or target_size has non-positive dimensions, returns empty array.
 static func scale_images_to_fit_from_bbox(images: Array, bbox: Rect2i, target_size: Vector2i, interpolation: int = Image.INTERPOLATE_BILINEAR) -> Array:
 	assert(images != null)
@@ -232,13 +232,14 @@ static func scale_images_to_fit_from_bbox(images: Array, bbox: Rect2i, target_si
 	if target_size.x <= 0 or target_size.y <= 0:
 		return result
 
+	# Compute uniform scale to fit bbox into target_size while preserving aspect ratio.
 	var sx: float = float(target_size.x) / float(bbox.size.x)
 	var sy: float = float(target_size.y) / float(bbox.size.y)
 	var scale: float = min(sx, sy)
-	var out_w: int = int(round(float(bbox.size.x) * scale))
-	var out_h: int = int(round(float(bbox.size.y) * scale))
-	out_w = max(1, out_w)
-	out_h = max(1, out_h)
+	var scaled_w: int = int(round(float(bbox.size.x) * scale))
+	var scaled_h: int = int(round(float(bbox.size.y) * scale))
+	scaled_w = max(1, scaled_w)
+	scaled_h = max(1, scaled_h)
 
 	for img in images:
 		if img == null:
@@ -253,15 +254,25 @@ static func scale_images_to_fit_from_bbox(images: Array, bbox: Rect2i, target_si
 		var cropped: Image = Image.create(bbox.size.x, bbox.size.y, false, Image.FORMAT_RGBA8)
 		cropped.fill(Color(0, 0, 0, 0))
 
-		# Intersect bbox with image bounds
+		# Intersect bbox with image bounds (bbox is in the same origin as image)
 		var src_rect := Rect2i(0, 0, image.get_width(), image.get_height())
 		var isect := bbox.intersection(src_rect)
 		if isect.size.x > 0 and isect.size.y > 0:
 			var dst_pos := isect.position - bbox.position
+			# blit the portion from source image into the cropped canvas
 			cropped.blit_rect(image, isect, dst_pos)
 
-		# Resize uniformly to fit target size
-		cropped.resize(out_w, out_h, interpolation)
-		result.push_back(cropped)
+		# Resize uniformly to scaled size
+		cropped.resize(scaled_w, scaled_h, interpolation)
+
+		# Compose final image of exactly target_size, centering the scaled content and padding with transparency
+		var out_img: Image = Image.create(target_size.x, target_size.y, false, Image.FORMAT_RGBA8)
+		out_img.fill(Color(0, 0, 0, 0))
+		var dst_x := int(floor((float(target_size.x) - float(scaled_w)) * 0.5))
+		var dst_y := int(floor((float(target_size.y) - float(scaled_h)) * 0.5))
+		if scaled_w > 0 and scaled_h > 0:
+			out_img.blit_rect(cropped, Rect2i(0, 0, scaled_w, scaled_h), Vector2i(dst_x, dst_y))
+
+		result.push_back(out_img)
 
 	return result

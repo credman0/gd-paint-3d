@@ -17,6 +17,7 @@ enum BrushShapes { RECTANGLE, CIRCLE }
 @onready var backdrop: ColorRect = $"Backdrop" # Neutral gray underlay
 @onready var canvas_tabs: TabBar = %CanvasTabBar
 var underlay_container: Control = null # Holds preview TextureRects for other layers
+var overlay_container: Control = null # Holds preview TextureRects for layers above the active
 var drawing_rect: Rect2i
 var _is_rebuilding_tabs: bool = false
 
@@ -84,6 +85,10 @@ var _last_crayon_stamp: Vector2i = Vector2i(-1, -1)
 const IMAGE_UPDATED_INTERVAL_MS: int = 250
 var _image_update_pending: bool = false
 var _last_image_emit_ts_ms: int = 0
+
+# Preview opacity falloff (0..1). 1 = no fade, 0 = immediate hide for non-equal-depth.
+var above_falloff: float = 0.7
+var below_falloff: float = 0.7
 
 func _ready() -> void:
 	Input.use_accumulated_input = false
@@ -303,6 +308,13 @@ func _setup_underlay_container() -> void:
 		backdrop.z_index = 0
 		underlay_container.z_index = 5
 		drawing_area.z_index = 10
+	if overlay_container == null:
+		overlay_container = Control.new()
+		overlay_container.name = "OverlayContainer"
+		overlay_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(overlay_container)
+		# Place overlay above the active drawing area
+		overlay_container.z_index = 15
 
 func _canvas_display_name(c: PaintCanvasState, idx: int) -> String:
 	var n := c.canvas_name
@@ -340,27 +352,80 @@ func _rebuild_underlay_layers() -> void:
 	# Clear previous preview layers
 	for child in underlay_container.get_children():
 		child.queue_free()
+	if overlay_container != null:
+		for child in overlay_container.get_children():
+			child.queue_free()
 	underlay_container.visible = false
+	if overlay_container != null:
+		overlay_container.visible = false
 	if canvas == null:
 		return
 	var active_depth := canvas.depth
-	# Build list of canvases with depth greater than active
-	var preview_list: Array[PaintCanvasState] = []
+	# Build sorted list excluding active
+	var others: Array[PaintCanvasState] = []
 	for c in canvases:
-		if c != canvas and c.depth > active_depth:
-			preview_list.append(c)
-	# Sort that subset by the same rule (depth, then name)
-	preview_list.sort_custom(Callable(self, "_canvas_less_than"))
-	# Create TextureRects for each
-	for c in preview_list:
+		if c != canvas:
+			others.append(c)
+	others.sort_custom(Callable(self, "_canvas_less_than"))
+
+	# Split into underlay (below) and overlay (above) preserving order.
+	var under_list: Array[Dictionary] = [] # { c: PaintCanvasState, equal: bool }
+	var over_list: Array[Dictionary] = []
+	for c in others:
+		if c.depth > active_depth:
+			under_list.append({"c": c, "equal": false})
+		elif c.depth < active_depth:
+			over_list.append({"c": c, "equal": false})
+		else:
+			# Same depth: decide side based on secondary ordering to preserve total order
+			var goes_before := _canvas_less_than(c, canvas) # drawn before active -> under
+			if goes_before:
+				under_list.append({"c": c, "equal": true})
+			else:
+				over_list.append({"c": c, "equal": true})
+
+	# Create TextureRects with falloff alpha for below (underlay)
+	var idx := 0
+	for entry in under_list:
+		var c: PaintCanvasState = entry["c"]
+		var equal: bool = entry["equal"]
 		var tex_rect := TextureRect.new()
 		tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tex_rect.texture = c.canvas_tex
 		tex_rect.size = c.canvas_resolution
 		tex_rect.position = Vector2.ZERO
 		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP
+		var a := 1.0 if equal else _falloff_alpha_for_index(idx, below_falloff)
+		tex_rect.modulate = Color(1, 1, 1, a)
 		underlay_container.add_child(tex_rect)
-	underlay_container.visible = not preview_list.is_empty()
+		if not equal:
+			idx += 1
+	underlay_container.visible = not under_list.is_empty()
+
+	# Create TextureRects with falloff alpha for above (overlay)
+	idx = 0
+	if overlay_container != null:
+		for entry in over_list:
+			var c2: PaintCanvasState = entry["c"]
+			var equal2: bool = entry["equal"]
+			var tex_rect2 := TextureRect.new()
+			tex_rect2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tex_rect2.texture = c2.canvas_tex
+			tex_rect2.size = c2.canvas_resolution
+			tex_rect2.position = Vector2.ZERO
+			tex_rect2.stretch_mode = TextureRect.STRETCH_KEEP
+			var a2 := 1.0 if equal2 else _falloff_alpha_for_index(idx, above_falloff)
+			tex_rect2.modulate = Color(1, 1, 1, a2)
+			overlay_container.add_child(tex_rect2)
+			if not equal2:
+				idx += 1
+		overlay_container.visible = not over_list.is_empty()
+
+func _falloff_alpha_for_index(i: int, falloff: float) -> float:
+	var f := clampf(falloff, 0.0, 1.0)
+	if f >= 0.999:
+		return 1.0
+	return pow(f, float(i + 1))
 
 # ---- Raster painting ---------------------------------------------------------
 
@@ -666,6 +731,10 @@ func _apply_view_transform() -> void:
 	if underlay_container != null:
 		underlay_container.position = view_origin
 		underlay_container.scale = Vector2(zoom, zoom)
+	# Move/scale overlay container to match
+	if overlay_container != null:
+		overlay_container.position = view_origin
+		overlay_container.scale = Vector2(zoom, zoom)
 
 func _set_zoom(target: float, pivot_vp: Vector2) -> void:
 	var old_zoom := zoom
@@ -812,6 +881,22 @@ func load_project(path: String) -> void:
 		_resort_and_refresh(target)
 	else:
 		_resort_and_refresh(null)
+
+# ---- Preview opacity control (public) --------------------------------------
+
+func set_preview_above_falloff(v: float) -> void:
+	above_falloff = clampf(v, 0.0, 1.0)
+	_rebuild_underlay_layers()
+
+func set_preview_below_falloff(v: float) -> void:
+	below_falloff = clampf(v, 0.0, 1.0)
+	_rebuild_underlay_layers()
+
+func get_preview_above_falloff() -> float:
+	return above_falloff
+
+func get_preview_below_falloff() -> float:
+	return below_falloff
 
 # ---- Public proxy methods ---------------------------------------------------
 
