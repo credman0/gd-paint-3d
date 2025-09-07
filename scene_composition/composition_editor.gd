@@ -21,6 +21,9 @@ func _ready() -> void:
 	else:
 		_update_controls_enabled()
 
+func _process(_delta: float) -> void:
+	_on_rotation_slider_drag_ended(true)
+
 func _populate_layers() -> void:
 	layer_list.clear()
 	if composited_scene == null:

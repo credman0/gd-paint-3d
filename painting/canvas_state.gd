@@ -5,7 +5,7 @@ class_name PaintCanvasState
 signal image_updated(image: Image)
 
 # Canvas/Image state and history
-var canvas_resolution: Vector2 = Vector2(1024, 768)
+var canvas_resolution: Vector2 = Vector2(1024, 1024)
 var drawing_rect: Rect2i
 var bg_color: Color = Color.WHITE
 var canvas_name: String = "" # Human-readable name for UI (tabs, lists)
