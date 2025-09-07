@@ -3,6 +3,7 @@ extends Control
 signal image_updated(image: Image)
 signal active_canvas_changed(index: int, title: String)
 signal canvases_updated(canvases: Array, names: PackedStringArray)
+signal canvas_depth_changed(index: int, depth: float)
 
 const UNDO_NONE := -1
 
@@ -30,7 +31,7 @@ var canvases: Array[PaintCanvasState] = []
 var active_canvas_index: int = -1
 var canvas: PaintCanvasState
 var tools: PaintToolsState
-var canvas_names: Array[String] = []
+var canvas_names: Array[String] = [] # Deprecated: kept to build names array for signals; source of truth is canvas.canvas_name
 
 # Public proxy properties (map to tools/canvas)
 var brush_mode: int:
@@ -113,14 +114,12 @@ func _init_canvas() -> void:
 func _sync_tabs() -> void:
 	# Rebuild tabs: one per canvas + a trailing '+' tab
 	canvas_tabs.clear_tabs()
-	# Ensure names array stays in sync in length
-	while canvas_names.size() < canvases.size():
-		canvas_names.append("Canvas %d" % (canvas_names.size() + 1))
-	while canvas_names.size() > canvases.size():
-		canvas_names.pop_back()
-
+	# Ensure names helper array stays in sync in length (derive from canvas state)
+	canvas_names.resize(canvases.size())
 	for i in range(canvases.size()):
-		var title := canvas_names[i] if i < canvas_names.size() else "Canvas %d" % (i + 1)
+		var c: PaintCanvasState = canvases[i]
+		var title := (c.canvas_name if c.canvas_name != "" else "Canvas %d" % (i + 1))
+		canvas_names[i] = title
 		canvas_tabs.add_tab(title)
 	canvas_tabs.add_tab("+")
 	# Keep selection on the active canvas (not the '+')
@@ -132,8 +131,8 @@ func _add_new_canvas() -> void:
 	s.canvas_resolution = Vector2(1024, 768)
 	s.init_canvas()
 	canvases.append(s)
-	# Default name for the new canvas
-	canvas_names.append("Canvas %d" % canvases.size())
+	# Default name for the new canvas lives in canvas state
+	s.canvas_name = "Canvas %d" % canvases.size()
 	_set_active_canvas(canvases.size() - 1)
 	_sync_tabs()
 	_emit_canvases_updated()
@@ -153,7 +152,7 @@ func _set_active_canvas(idx: int) -> void:
 	if canvas_tabs.get_tab_count() > 0 and active_canvas_index < canvas_tabs.get_tab_count() and canvas_tabs.current_tab != active_canvas_index:
 		canvas_tabs.current_tab = active_canvas_index
 	# Notify listeners (e.g., tools panel) about active canvas change
-	var title := canvas_names[active_canvas_index] if active_canvas_index >= 0 and active_canvas_index < canvas_names.size() else ""
+	var title := canvas.canvas_name if canvas.canvas_name != "" else "Canvas %d" % (active_canvas_index + 1)
 	active_canvas_changed.emit(active_canvas_index, title)
 
 func _on_canvas_tabs_tab_selected(idx: int) -> void:
@@ -169,13 +168,8 @@ func rename_active_canvas(title: String) -> void:
 	title = title.strip_edges()
 	if title.is_empty():
 		title = "Untitled"
-	if active_canvas_index >= canvas_names.size():
-		# Grow names array defensively
-		while canvas_names.size() < active_canvas_index:
-			canvas_names.append("Canvas %d" % (canvas_names.size() + 1))
-		canvas_names.append(title)
-	else:
-		canvas_names[active_canvas_index] = title
+	# Store name on the canvas itself
+	canvases[active_canvas_index].canvas_name = title
 	# Update tabbar title (avoid touching the trailing '+')
 	if active_canvas_index < canvas_tabs.get_tab_count():
 		canvas_tabs.set_tab_title(active_canvas_index, title)
@@ -185,16 +179,29 @@ func rename_active_canvas(title: String) -> void:
 func _emit_canvases_updated() -> void:
 	# Emit a snapshot of canvases and their names for external consumers
 	var names_psa := PackedStringArray()
-	for n in canvas_names:
+	for i in range(canvases.size()):
+		var c: PaintCanvasState = canvases[i]
+		var n := c.canvas_name if c.canvas_name != "" else "Canvas %d" % (i + 1)
 		names_psa.append(n)
 	canvases_updated.emit(canvases, names_psa)
 
 func get_active_canvas_title() -> String:
 	if canvases.is_empty() or active_canvas_index < 0:
 		return ""
-	if active_canvas_index < canvas_names.size():
-		return canvas_names[active_canvas_index]
-	return "Canvas %d" % (active_canvas_index + 1)
+	var c := canvases[active_canvas_index]
+	return c.canvas_name if c.canvas_name != "" else "Canvas %d" % (active_canvas_index + 1)
+
+func set_active_canvas_depth(value: float) -> void:
+	if canvases.is_empty() or active_canvas_index < 0:
+		return
+	canvases[active_canvas_index].depth = value
+	canvas_depth_changed.emit(active_canvas_index, value)
+
+func set_canvas_depth(index: int, value: float) -> void:
+	if index < 0 or index >= canvases.size():
+		return
+	canvases[index].depth = value
+	canvas_depth_changed.emit(index, value)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:

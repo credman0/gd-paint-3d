@@ -12,7 +12,11 @@ func _ready() -> void:
 	texture_rect.texture = canvas.canvas_tex
 	texture_rect.size = canvas.canvas_resolution
 	sub_viewport.set_size(canvas.canvas_resolution)
-	transform.origin.z = -depth
+	# Initialize depth from canvas state if available
+	var d := depth
+	if canvas != null:
+		d = canvas.depth
+	set_depth(d)
 
 func set_depth(value: float) -> void:
 	depth = value

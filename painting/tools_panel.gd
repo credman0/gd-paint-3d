@@ -6,6 +6,7 @@ extends Panel
 @onready var label_stats = %LabelStats
 @onready var label_tools = %LabelTools
 @onready var tab_name_line_edit: LineEdit = %TabNameLineEdit
+@onready var depth_slider: HSlider = %CanvasDepthSlider
 
 @onready var _parent = get_parent()
 @onready var save_dialog = _parent.get_parent().get_node(^"SaveFileDialog")
@@ -46,9 +47,19 @@ func _ready():
 		# Initialize its text to current active canvas title
 		if paint_control.has_method(&"get_active_canvas_title"):
 			tab_name_line_edit.text = paint_control.get_active_canvas_title()
+	# Depth slider wiring
+	if depth_slider:
+		depth_slider.value_changed.connect(_on_depth_changed)
+		# Initialize from active canvas if available
+		if paint_control and paint_control.canvases.size() > 0 and paint_control.active_canvas_index >= 0:
+			var c: PaintCanvasState = paint_control.canvases[paint_control.active_canvas_index]
+			depth_slider.value = c.depth
 	# React to active canvas changes to keep text in sync
 	if paint_control.has_signal(&"active_canvas_changed"):
 		paint_control.active_canvas_changed.connect(_on_active_canvas_changed)
+		# When depth changes externally (e.g., from composition editor), keep slider synced
+		if paint_control.has_signal(&"canvas_depth_changed"):
+			paint_control.canvas_depth_changed.connect(_on_canvas_depth_changed)
 
 
 func _physics_process(_delta):
@@ -152,3 +163,20 @@ func _on_tab_name_focus_exited() -> void:
 func _on_active_canvas_changed(_idx: int, title: String) -> void:
 	if tab_name_line_edit:
 		tab_name_line_edit.text = title
+	if depth_slider and paint_control:
+		var idx: int = paint_control.active_canvas_index
+		if idx >= 0 and idx < paint_control.canvases.size():
+			depth_slider.set_block_signals(true)
+			depth_slider.value = paint_control.canvases[idx].depth
+			depth_slider.set_block_signals(false)
+
+func _on_depth_changed(value: float) -> void:
+	if paint_control and paint_control.has_method(&"set_active_canvas_depth"):
+		paint_control.set_active_canvas_depth(value)
+
+func _on_canvas_depth_changed(index: int, value: float) -> void:
+	# if the active canvas changed depth externally, mirror in slider
+	if paint_control and index == paint_control.active_canvas_index and depth_slider:
+		depth_slider.set_block_signals(true)
+		depth_slider.value = value
+		depth_slider.set_block_signals(false)

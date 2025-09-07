@@ -8,6 +8,8 @@ signal image_updated(image: Image)
 var canvas_resolution: Vector2 = Vector2(1024, 768)
 var drawing_rect: Rect2i
 var bg_color: Color = Color.WHITE
+var canvas_name: String = "" # Human-readable name for UI (tabs, lists)
+var depth: float = 0.0 # Parallax depth for composition (positive pulls forward)
 
 var canvas_img: Image
 var canvas_tex: ImageTexture

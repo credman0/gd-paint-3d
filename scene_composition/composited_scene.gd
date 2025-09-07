@@ -6,7 +6,6 @@ signal depth_changed(index: int, depth: float)
 @onready var camera: Camera3D = %Camera3D
 @onready var layers_parent: Node3D = %Layers
 
-var depths: Array[float] = []
 var layers: Array[PaintedLayer] = []
 
 const PAINTED_LAYER_SCENE: PackedScene = preload("res://scene_composition/painted_layer.tscn")
@@ -27,10 +26,11 @@ func update_from_canvases(canvases: Array[PaintCanvasState], names: PackedString
 	for i in range(canvases.size()):
 		var layer := PAINTED_LAYER_SCENE.instantiate() as PaintedLayer
 		layer.canvas = canvases[i]
-		if depths.size() <= i:
-			depths.append(0.0)
-		layer.set_depth(depths[i])
-		var nm := (names[i] if i < names.size() else "")
+		# Depth and name come from the canvas itself
+		layer.set_depth(canvases[i].depth)
+		var nm := canvases[i].canvas_name
+		if nm == "":
+			nm = (names[i] if i < names.size() else "")
 		layer.layer_name = nm if nm != "" else "Layer " + str(i)
 		layers_parent.add_child(layer)
 		layers.append(layer)
@@ -38,9 +38,13 @@ func update_from_canvases(canvases: Array[PaintCanvasState], names: PackedString
 	emit_signal("layers_updated")
 
 func set_depth(index: int, depth: float) -> void:
-	if index < 0 or index >= depths.size():
+	if index < 0 or index >= layers.size():
 		return
-	depths[index] = depth
-	if index < layers.size():
-		layers[index].set_depth(depth)
+	# No-op if unchanged to prevent feedback loops
+	if layers[index].depth == depth:
+		return
+	# Update both the layer node and its backing canvas for persistence
+	layers[index].set_depth(depth)
+	if layers[index].canvas:
+		layers[index].canvas.depth = depth
 	emit_signal("depth_changed", index, depth)
