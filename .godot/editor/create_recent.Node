@@ -1,3 +1,7 @@
+MarginContainer
+Control
+HBoxContainer
+TabBar
 TabContainer
 MeshInstance3D
 TextureRect

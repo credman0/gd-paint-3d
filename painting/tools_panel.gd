@@ -7,8 +7,8 @@ extends Panel
 @onready var label_tools = $LabelTools
 
 @onready var _parent = get_parent()
-@onready var save_dialog = _parent.get_node(^"SaveFileDialog")
-@onready var paint_control = _parent.get_node(^"PaintControl")
+@onready var save_dialog = _parent.get_parent().get_node(^"SaveFileDialog")
+@onready var paint_control = _parent.get_parent()
 
 func _ready():
 	# Assign all of the needed signals for the oppersation buttons.
