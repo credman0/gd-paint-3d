@@ -260,9 +260,11 @@ func _process(_dt: float) -> void:
 
 func _viewport_to_canvas(p: Vector2) -> Vector2i:
 	# Inverse of display transform: (p - origin) / zoom -> pixel coords
+	# Use the drawing area's GLOBAL position to account for parent layout offsets (e.g., TabContainer)
+	var origin_vp: Vector2 = drawing_area.global_position
 	return Vector2i(
-		clampi(int(floor((p.x - view_origin.x) / zoom)), 0, drawing_rect.size.x - 1),
-		clampi(int(floor((p.y - view_origin.y) / zoom)), 0, drawing_rect.size.y - 1)
+		clampi(int(floor((p.x - origin_vp.x) / zoom)), 0, drawing_rect.size.x - 1),
+		clampi(int(floor((p.y - origin_vp.y) / zoom)), 0, drawing_rect.size.y - 1)
 	)
 
 func _current_color() -> Color:
@@ -450,7 +452,8 @@ func _maybe_emit_image_update() -> void:
 
 func _display_rect_vp() -> Rect2:
 	# Rect in viewport coordinates that the canvas occupies
-	return Rect2(view_origin, Vector2(drawing_rect.size) * zoom)
+	# Use global position so layout parents don't introduce a fixed offset
+	return Rect2(drawing_area.global_position, Vector2(drawing_rect.size) * zoom)
 
 func _apply_view_transform() -> void:
 	# Apply pan/zoom to the drawing area for visual feedback
@@ -469,7 +472,12 @@ func _set_zoom(target: float, pivot_vp: Vector2) -> void:
 		return
 	# Keep the cursor position stable relative to the canvas while zooming
 	var factor := zoom / old_zoom
-	view_origin = pivot_vp - (pivot_vp - view_origin) * factor
+	# Compute in GLOBAL space to avoid parent layout offsets
+	var origin_global: Vector2 = drawing_area.global_position
+	var new_origin_global: Vector2 = pivot_vp - (pivot_vp - origin_global) * factor
+	var delta: Vector2 = new_origin_global - origin_global
+	# Apply delta to local position (for Controls, local/global deltas are identical for translation)
+	view_origin += delta
 	_apply_view_transform()
 
 # ---- Stroke record logging ---------------------------------------------------
