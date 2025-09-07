@@ -54,8 +54,10 @@ func set_depth(index: int, depth: float) -> void:
 ## Export the current composited scene as a glTF 2.0 JSON (.gltf) file with
 ## embedded PNG images and buffers. Each layer becomes a textured quad placed
 ## at its depth (negative Z like in the runtime).
-func export_gltf(path: String) -> int:
-	var doc := _build_gltf_document()
+## pixels_per_unit controls size normalization (e.g., 1024 -> a 1024x1024 image is 1x1 units).
+## If scale_depth is true, the same normalization is applied to Z translation.
+func export_gltf(path: String, pixels_per_unit: float = 1024.0, scale_depth: bool = false) -> int:
+	var doc := _build_gltf_document(pixels_per_unit, scale_depth)
 	if doc.is_empty():
 		return ERR_INVALID_DATA
 	var json := JSON.stringify(doc, "\t")
@@ -67,7 +69,7 @@ func export_gltf(path: String) -> int:
 	f.close()
 	return OK
 
-func _build_gltf_document() -> Dictionary:
+func _build_gltf_document(pixels_per_unit: float, scale_depth: bool) -> Dictionary:
 	var gltf: Dictionary = {
 		"asset": {"version": "2.0", "generator": "gdpaint-composited-scene"},
 		"extensionsUsed": ["KHR_materials_unlit"],
@@ -103,8 +105,11 @@ func _build_gltf_document() -> Dictionary:
 
 		var layer_name_ := layer.layer_name if layer.layer_name != "" else "Layer %d" % i
 		var sz: Vector2 = layer.canvas.canvas_resolution
-		var w := float(sz.x)
-		var h := float(sz.y)
+		var w_px := float(sz.x)
+		var h_px := float(sz.y)
+		var inv_ppu: float = 1.0 / max(pixels_per_unit, 1.0)
+		var w: float = w_px * inv_ppu
+		var h: float = h_px * inv_ppu
 
 		# 1) Build a single-quad mesh buffer for this layer
 		var quad := _build_textured_quad_bytes(w, h)
@@ -139,10 +144,10 @@ func _build_gltf_document() -> Dictionary:
 		})
 
 		# Accessors
-		var minx := -w * 0.5
-		var maxx := w * 0.5
-		var miny := -h * 0.5
-		var maxy := h * 0.5
+		var minx: float = -w * 0.5
+		var maxx: float = w * 0.5
+		var miny: float = -h * 0.5
+		var maxy: float = h * 0.5
 		var acc_pos: int = gltf.accessors.size()
 		gltf.accessors.append({
 			"bufferView": bv_pos,
@@ -214,7 +219,7 @@ func _build_gltf_document() -> Dictionary:
 		gltf.nodes.append({
 			"name": layer_name_,
 			"mesh": mesh_index,
-			"translation": [0.0, 0.0, -float(layer.depth)]
+			"translation": [0.0, 0.0, -(float(layer.depth) * (inv_ppu if scale_depth else 1.0))]
 		})
 		scene_node_indices.append(node_index)
 
