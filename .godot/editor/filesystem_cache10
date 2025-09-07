@@ -1,8 +1,10 @@
 ea4bc82a6ad023ab7ee23ee620429895
-::res://::1757206934
+::res://::1757208810
 icon.webp::CompressedTexture2D/CompressedTexture2D::3626017087650301524::1757206675::1757206683::1::::<><><>0<>0<>c6c2d2a409d3db208320ab54c2d08e4f<>res://.godot/imported/icon.webp-e94f9a68b0f625a567a797079e4d325f.ctex::
-paint_control.gd::GDScript/GDScript::7557676061881668570::1757206675::0::1::::<>Control<><>0<>0<><>::
-paint_root.tscn::PackedScene::2897093689615341755::1757206928::0::1::::<><><>0<>0<><>::uid://dfw825s4bfqni::::res://paint_control.gd<>uid://de0tx6ipr51rl::::res://tools_panel.gd<>uid://cdqq0m3rrlbva::::res://paint_tools.png
+paint_control.gd::GDScript::7557676061881668570::1757208584::0::1::::<>Control<><>0<>0<><>::
+paint_root.tscn::PackedScene::2897093689615341755::1757209056::0::1::::<><><>0<>0<><>::uid://dfw825s4bfqni::::res://paint_control.gd<>uid://de0tx6ipr51rl::::res://tools_panel.gd<>uid://cdqq0m3rrlbva::::res://paint_tools.png
 paint_tools.png::CompressedTexture2D/CompressedTexture2D::5017454733427421014::1757206675::1757206683::1::::<><><>0<>0<>8f4500af8c889d6e2308b8896b35a703<>res://.godot/imported/paint_tools.png-224b64b7ddb26189a369199f6d686b79.ctex::
 README.md::TextFile/TextFile::-1::1757206675::0::1::::<><><>0<>0<><>::
-tools_panel.gd::GDScript/GDScript::7492823206893051157::1757206675::0::1::::<>Panel<><>0<>0<><>::
+paint_root.gd::GDScript::7699863043901543074::1757208379::0::1::::<>Control<><>0<>0<><>::
+tools_panel.gd::GDScript::7492823206893051157::1757208545::0::1::::<>Panel<><>0<>0<><>::
+::res://painting/::0

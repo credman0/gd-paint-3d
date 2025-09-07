@@ -2,7 +2,7 @@ extends Control
 
 const UNDO_NONE := -1
 
-enum BrushModes { PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
+enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
 enum BrushShapes { RECTANGLE, CIRCLE }
 
 @onready var drawing_area: TextureRect = $"../DrawingArea" # TextureRect
@@ -36,7 +36,7 @@ var pressure_max_factor := 1.0
 var _current_pressure := 0.0
 
 # Brush
-var brush_mode := BrushModes.PENCIL
+var brush_mode := BrushModes.PEN
 var brush_size := 32
 var brush_color := Color.BLACK
 var brush_shape := BrushShapes.CIRCLE
@@ -79,7 +79,7 @@ func _process(_dt: float) -> void:
 				stroke_active = true
 
 		if stroke_active and _mouse_inside_canvas_now():
-			if brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER:
+			if brush_mode == BrushModes.PEN or brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER:
 				_paint_line(last_paint_pos, mouse_pos_vp)
 				last_paint_pos = mouse_pos_vp
 	else:
@@ -112,6 +112,9 @@ func _size_from_pressure(base_size: int, is_pressure_brush: bool) -> int:
 	var sized := int(round(lerp(min_size, max_size, _current_pressure)))
 	return max(1, sized)
 
+func _is_pressure_brush() -> bool:
+	return brush_mode == BrushModes.PEN or brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER
+
 func _paint_line(from_vp: Vector2, to_vp: Vector2) -> void:
 	var p0: Vector2i = _viewport_to_canvas(from_vp)
 	var p1: Vector2i = _viewport_to_canvas(to_vp)
@@ -141,7 +144,7 @@ func _place_shape(to_vp: Vector2) -> void:
 			_fill_rect(tl, br - tl + Vector2i.ONE, _current_color())
 			_log_rect(tl, br, _current_color())
 		BrushModes.CIRCLE_SHAPE:
-			var center := Vector2i((a.x + b.x) / 2, (a.y + b.y) / 2)
+			var center := Vector2i(((a.x + b.x) >> 1), ((a.y + b.y) >> 1))
 			var r := int(round(Vector2(center.x, b.y).distance_to(center)))
 			_fill_circle(center, r, _current_color())
 			_log_circle(center, r, _current_color())
@@ -160,15 +163,24 @@ func _stamp_at(p: Vector2i) -> void:
 	canvas_img.unlock()
 
 func _stamp_at_unsafe(p: Vector2i) -> void:
-	var is_pressure_brush := (brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER)
-	var size_px := _size_from_pressure(brush_size, is_pressure_brush)
+	var is_pressure := _is_pressure_brush()
+	var size_px := _size_from_pressure(brush_size, is_pressure)
+	var col := _current_color()
+	var use_textured := brush_mode == BrushModes.PENCIL
 	match brush_shape:
 		BrushShapes.RECTANGLE:
-			var half := size_px / 2
+			var half := size_px >> 1
 			var tl := Vector2i(p.x - half, p.y - half)
-			_fill_rect_unsafe(tl, Vector2i(size_px, size_px), _current_color())
+			if use_textured:
+				_fill_rect_textured_unsafe(tl, Vector2i(size_px, size_px), col)
+			else:
+				_fill_rect_unsafe(tl, Vector2i(size_px, size_px), col)
 		BrushShapes.CIRCLE:
-			_fill_circle_unsafe(p, size_px / 2, _current_color())
+			var r := size_px >> 1
+			if use_textured:
+				_fill_circle_textured_unsafe(p, r, col)
+			else:
+				_fill_circle_unsafe(p, r, col)
 
 func _fill_rect(tl: Vector2i, sz: Vector2i, col: Color) -> void:
 	canvas_img.lock()
@@ -205,6 +217,62 @@ func _fill_circle_unsafe(center: Vector2i, r: int, col: Color) -> void:
 			if dx * dx + dy2 <= r2:
 				canvas_img.set_pixel(x, y, col)
 
+# Textured pencil fill (grainy, semi-transparent, pressure-reactive)
+func _fill_rect_textured_unsafe(tl: Vector2i, sz: Vector2i, col: Color) -> void:
+	var x0: int = clampi(tl.x, 0, drawing_rect.size.x - 1)
+	var y0: int = clampi(tl.y, 0, drawing_rect.size.y - 1)
+	var x1: int = clampi(tl.x + sz.x - 1, 0, drawing_rect.size.x - 1)
+	var y1: int = clampi(tl.y + sz.y - 1, 0, drawing_rect.size.y - 1)
+	var base_alpha := _pencil_base_alpha()
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var a := base_alpha * _pencil_grain(x, y)
+			_blend_pixel(x, y, col, a)
+
+func _fill_circle_textured_unsafe(center: Vector2i, r: int, col: Color) -> void:
+	if r <= 0:
+		return
+	var r2: int = r * r
+	var minx: int = clampi(center.x - r, 0, drawing_rect.size.x - 1)
+	var maxx: int = clampi(center.x + r, 0, drawing_rect.size.x - 1)
+	var miny: int = clampi(center.y - r, 0, drawing_rect.size.y - 1)
+	var maxy: int = clampi(center.y + r, 0, drawing_rect.size.y - 1)
+	var base_alpha := _pencil_base_alpha()
+	for y in range(miny, maxy + 1):
+		var dy: int = y - center.y
+		var dy2: int = dy * dy
+		for x in range(minx, maxx + 1):
+			var dx: int = x - center.x
+			var d2 := dx * dx + dy2
+			if d2 <= r2:
+				# Soft falloff near the edge
+				var t := 1.0 - sqrt(float(d2)) / float(r)
+				t = clampf(t, 0.0, 1.0)
+				var a := base_alpha * (0.5 + 0.5 * t) * _pencil_grain(x, y)
+				_blend_pixel(x, y, col, a)
+
+func _pencil_base_alpha() -> float:
+	if pressure_enabled:
+		return clampf(lerp(0.18, 0.6, _current_pressure), 0.05, 0.85)
+	return 0.35
+
+func _pencil_grain(x: int, y: int) -> float:
+	# Cheap, stable coordinate hash -> 0..1
+	var n: int = x * 374761393 + y * 668265263
+	n = int(n ^ (n >> 13)) * 1274126177
+	n = int(n ^ (n >> 16))
+	var v := float(n & 0xFF) / 255.0
+	# Bias to avoid too transparent results
+	return 0.6 + 0.4 * v
+
+func _blend_pixel(x: int, y: int, col: Color, a: float) -> void:
+	a = clampf(a, 0.0, 1.0)
+	if a <= 0.001:
+		return
+	var dst: Color = canvas_img.get_pixel(x, y)
+	var out: Color = dst.lerp(col, a)
+	canvas_img.set_pixel(x, y, out)
+
 func _update_texture() -> void:
 	canvas_tex.update(canvas_img)
 
@@ -212,7 +280,7 @@ func _update_texture() -> void:
 
 func _begin_record() -> void:
 	_current_record.clear()
-	if brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER:
+	if brush_mode == BrushModes.PEN or brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER:
 		var rec: Dictionary = {
 			"kind": "stroke",
 			"brush_type": brush_mode,
@@ -228,7 +296,7 @@ func _begin_record() -> void:
 
 func _log_point(pix: Vector2i) -> void:
 	if _current_record.size() > 0 and _current_record["kind"] == "stroke":
-		var is_pressure_brush := (brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER)
+		var is_pressure_brush := _is_pressure_brush()
 		var size_px := _size_from_pressure(brush_size, is_pressure_brush)
 		var pts: PackedVector2Array = _current_record["points"]
 		var sizes: PackedInt32Array = _current_record["sizes"]

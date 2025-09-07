@@ -1,2 +1,3 @@
 res://paint_root.tscn
 res://paint_control.gd
+res://tools_panel.gd

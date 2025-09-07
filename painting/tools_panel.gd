@@ -17,6 +17,7 @@ func _ready():
 	$ButtonClear.pressed.connect(button_pressed.bind("clear_picture"))
 
 	# Assign all of the needed signals for the brush buttons.
+	$ButtonToolPen.pressed.connect(button_pressed.bind("mode_pen"))
 	$ButtonToolPencil.pressed.connect(button_pressed.bind("mode_pencil"))
 	$ButtonToolEraser.pressed.connect(button_pressed.bind("mode_eraser"))
 	$ButtonToolRectangle.pressed.connect(button_pressed.bind("mode_rectangle"))
@@ -46,7 +47,11 @@ func button_pressed(button_name):
 	var tool_name = null
 	var shape_name = null
 
-	if button_name == "mode_pencil":
+	if button_name == "mode_pen":
+		paint_control.brush_mode = paint_control.BrushModes.PEN
+		brush_settings.modulate = Color(1, 1, 1, 1)
+		tool_name = "Pen"
+	elif button_name == "mode_pencil":
 		paint_control.brush_mode = paint_control.BrushModes.PENCIL
 		brush_settings.modulate = Color(1, 1, 1, 1)
 		tool_name = "Pencil"

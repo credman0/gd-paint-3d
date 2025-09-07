@@ -1,7 +1,7 @@
 [gd_scene load_steps=10 format=3 uid="uid://bhjmyer4wlwy2"]
 
-[ext_resource type="Script" uid="uid://dfw825s4bfqni" path="res://paint_control.gd" id="1"]
-[ext_resource type="Script" uid="uid://de0tx6ipr51rl" path="res://tools_panel.gd" id="2"]
+[ext_resource type="Script" uid="uid://dfw825s4bfqni" path="res://painting/paint_control.gd" id="1"]
+[ext_resource type="Script" uid="uid://de0tx6ipr51rl" path="res://painting/tools_panel.gd" id="2"]
 [ext_resource type="Texture2D" uid="uid://cdqq0m3rrlbva" path="res://paint_tools.png" id="3"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4ksjc"]
@@ -77,20 +77,43 @@ offset_left = 20.0
 offset_top = 6.0
 offset_right = 330.0
 offset_bottom = 32.0
-text = "Selected tool: Pencil"
+text = "Selected tool: Pen"
 metadata/_edit_layout_mode = 0
 metadata/_edit_use_custom_anchors = false
 
-[node name="ButtonToolPencil" type="Button" parent="ToolsPanel"]
+[node name="ButtonToolPen" type="Button" parent="ToolsPanel"]
 layout_mode = 0
-offset_left = 40.0
+offset_left = 20.0
 offset_top = 30.0
-offset_right = 95.0
+offset_right = 75.0
 offset_bottom = 85.0
 metadata/_edit_layout_mode = 0
 metadata/_edit_use_custom_anchors = false
 
-[node name="TextureRect" type="TextureRect" parent="ToolsPanel/ButtonToolPencil"]
+[node name="TextureRect" type="TextureRect" parent="ToolsPanel/ButtonToolPen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 5.0
+offset_top = 5.0
+offset_right = -5.0
+offset_bottom = -5.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("AtlasTexture_v0gbg")
+metadata/_edit_layout_mode = 1
+metadata/_edit_use_custom_anchors = false
+
+[node name="ButtonToolPencil" type="Button" parent="ToolsPanel"]
+layout_mode = 0
+offset_left = 90.0
+offset_top = 30.0
+offset_right = 145.0
+offset_bottom = 85.0
+metadata/_edit_layout_mode = 0
+metadata/_edit_use_custom_anchors = false
+
+[node name="TextureRectPencil" type="TextureRect" parent="ToolsPanel/ButtonToolPencil"]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -106,9 +129,9 @@ metadata/_edit_use_custom_anchors = false
 
 [node name="ButtonToolEraser" type="Button" parent="ToolsPanel"]
 layout_mode = 0
-offset_left = 110.0
+offset_left = 160.0
 offset_top = 30.0
-offset_right = 165.0
+offset_right = 215.0
 offset_bottom = 85.0
 metadata/_edit_layout_mode = 0
 metadata/_edit_use_custom_anchors = false
@@ -129,9 +152,9 @@ metadata/_edit_use_custom_anchors = false
 
 [node name="ButtonToolRectangle" type="Button" parent="ToolsPanel"]
 layout_mode = 0
-offset_left = 180.0
+offset_left = 230.0
 offset_top = 30.0
-offset_right = 235.0
+offset_right = 285.0
 offset_bottom = 85.0
 metadata/_edit_layout_mode = 0
 metadata/_edit_use_custom_anchors = false
@@ -152,9 +175,9 @@ metadata/_edit_use_custom_anchors = false
 
 [node name="ButtonToolCircle" type="Button" parent="ToolsPanel"]
 layout_mode = 0
-offset_left = 250.0
+offset_left = 300.0
 offset_top = 30.0
-offset_right = 305.0
+offset_right = 345.0
 offset_bottom = 85.0
 metadata/_edit_layout_mode = 0
 metadata/_edit_use_custom_anchors = false
