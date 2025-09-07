@@ -7,6 +7,9 @@ extends Panel
 @onready var label_tools = %LabelTools
 @onready var tab_name_line_edit: LineEdit = %TabNameLineEdit
 @onready var depth_slider: HSlider = %CanvasDepthSlider
+@onready var res_w_spin: SpinBox = %ResolutionW
+@onready var res_h_spin: SpinBox = %ResolutionH
+@onready var res_apply_btn: Button = %ApplyResolutionButton
 
 @onready var _parent = get_parent()
 @onready var export_dialog: FileDialog = _parent.get_parent().get_node(^"SaveFileDialog")
@@ -68,6 +71,12 @@ func _ready():
 		# When depth changes externally (e.g., from composition editor), keep slider synced
 		if paint_control.has_signal(&"canvas_depth_changed"):
 			paint_control.canvas_depth_changed.connect(_on_canvas_depth_changed)
+
+	# Resolution controls wiring
+	if res_apply_btn:
+		res_apply_btn.pressed.connect(_on_apply_resolution)
+	# Initialize resolution fields from active canvas
+	_update_resolution_fields()
 
 
 func _physics_process(_delta):
@@ -219,6 +228,7 @@ func _on_active_canvas_changed(_idx: int, title: String) -> void:
 			depth_slider.set_block_signals(true)
 			depth_slider.value = paint_control.canvases[idx].depth
 			depth_slider.set_block_signals(false)
+	_update_resolution_fields()
 
 func _on_depth_changed(value: float) -> void:
 	if paint_control and paint_control.has_method(&"set_active_canvas_depth"):
@@ -230,3 +240,20 @@ func _on_canvas_depth_changed(index: int, value: float) -> void:
 		depth_slider.set_block_signals(true)
 		depth_slider.value = value
 		depth_slider.set_block_signals(false)
+
+func _update_resolution_fields() -> void:
+	if res_w_spin == null or res_h_spin == null or paint_control == null:
+		return
+	var idx: int = paint_control.active_canvas_index
+	if idx >= 0 and idx < paint_control.canvases.size():
+		var c: PaintCanvasState = paint_control.canvases[idx]
+		res_w_spin.set_block_signals(true)
+		res_h_spin.set_block_signals(true)
+		res_w_spin.value = int(c.canvas_resolution.x)
+		res_h_spin.value = int(c.canvas_resolution.y)
+		res_w_spin.set_block_signals(false)
+		res_h_spin.set_block_signals(false)
+
+func _on_apply_resolution() -> void:
+	if paint_control and paint_control.has_method(&"resize_active_canvas") and res_w_spin and res_h_spin:
+		paint_control.resize_active_canvas(int(res_w_spin.value), int(res_h_spin.value))

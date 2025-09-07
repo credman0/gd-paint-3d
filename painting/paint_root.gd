@@ -16,6 +16,7 @@ enum BrushShapes { RECTANGLE, CIRCLE }
 @onready var drawing_area: TextureRect = $"DrawingArea" # TextureRect
 @onready var backdrop: ColorRect = $"Backdrop" # Neutral gray underlay
 @onready var canvas_tabs: TabBar = %CanvasTabBar
+var underlay_container: Control = null # Holds preview TextureRects for other layers
 var drawing_rect: Rect2i
 
 # View transform (pan/zoom)
@@ -93,6 +94,8 @@ func _ready() -> void:
 	_add_new_canvas()
 	# Initialize view origin to current placement of DrawingArea (if any), then apply transform
 	view_origin = drawing_area.position
+	# Create an underlay container for showing other layers beneath the active one
+	_setup_underlay_container()
 	_apply_view_transform()
 	# Initialize image update throttle clock
 	_last_image_emit_ts_ms = Time.get_ticks_msec()
@@ -108,6 +111,8 @@ func _init_canvas() -> void:
 	# Backdrop mirrors the drawing area footprint
 	backdrop.size = drawing_area.size
 	_apply_view_transform()
+	# Rebuild the underlay list to reflect the newly-active canvas
+	_rebuild_underlay_layers()
 
 # ---- Multi-canvas management -----------------------------------------------
 
@@ -133,9 +138,8 @@ func _add_new_canvas() -> void:
 	canvases.append(s)
 	# Default name for the new canvas lives in canvas state
 	s.canvas_name = "Canvas %d" % canvases.size()
-	_set_active_canvas(canvases.size() - 1)
-	_sync_tabs()
-	_emit_canvases_updated()
+	# Resort and refresh state so ordering by depth/name is enforced
+	_resort_and_refresh(s)
 
 func _set_active_canvas(idx: int) -> void:
 	if canvases.is_empty():
@@ -170,11 +174,8 @@ func rename_active_canvas(title: String) -> void:
 		title = "Untitled"
 	# Store name on the canvas itself
 	canvases[active_canvas_index].canvas_name = title
-	# Update tabbar title (avoid touching the trailing '+')
-	if active_canvas_index < canvas_tabs.get_tab_count():
-		canvas_tabs.set_tab_title(active_canvas_index, title)
-	active_canvas_changed.emit(active_canvas_index, title)
-	_emit_canvases_updated()
+	# Resort and refresh because name may affect ordering
+	_resort_and_refresh(canvases[active_canvas_index])
 
 func _emit_canvases_updated() -> void:
 	# Emit a snapshot of canvases and their names for external consumers
@@ -194,14 +195,23 @@ func get_active_canvas_title() -> String:
 func set_active_canvas_depth(value: float) -> void:
 	if canvases.is_empty() or active_canvas_index < 0:
 		return
-	canvases[active_canvas_index].depth = value
-	canvas_depth_changed.emit(active_canvas_index, value)
+	var c := canvases[active_canvas_index]
+	c.depth = value
+	# Depth affects ordering and underlay composition
+	_resort_and_refresh(c)
+	# Compute new index of this canvas after resort
+	var new_idx := canvases.find(c)
+	canvas_depth_changed.emit(new_idx, value)
 
 func set_canvas_depth(index: int, value: float) -> void:
 	if index < 0 or index >= canvases.size():
 		return
-	canvases[index].depth = value
-	canvas_depth_changed.emit(index, value)
+	var c := canvases[index]
+	c.depth = value
+	_resort_and_refresh(c)
+	# Emit with the canvas' new index
+	var new_idx := canvases.find(c)
+	canvas_depth_changed.emit(new_idx, value)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
@@ -262,6 +272,77 @@ func _process(_dt: float) -> void:
 
 	# In case there was no input this frame but an update is pending, try again
 	_maybe_emit_image_update()
+
+# ---- Ordering and underlay composition -------------------------------------
+
+func _setup_underlay_container() -> void:
+	if underlay_container == null:
+		underlay_container = Control.new()
+		underlay_container.name = "UnderlayContainer"
+		underlay_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(underlay_container)
+		# Ensure stacking order: backdrop (0) < underlay (5) < drawing (10)
+		backdrop.z_index = 0
+		underlay_container.z_index = 5
+		drawing_area.z_index = 10
+
+func _canvas_display_name(c: PaintCanvasState, idx: int) -> String:
+	var n := c.canvas_name
+	return n if n != "" else "Canvas %d" % (idx + 1)
+
+func _canvas_less_than(a: PaintCanvasState, b: PaintCanvasState) -> bool:
+	if a.depth == b.depth:
+		var an := (a.canvas_name if a.canvas_name != "" else "").to_lower()
+		var bn := (b.canvas_name if b.canvas_name != "" else "").to_lower()
+		return an < bn
+	return a.depth < b.depth
+
+func _resort_and_refresh(prefer_canvas: PaintCanvasState = null) -> void:
+	# Keep track of which canvas should stay active
+	var keep := prefer_canvas if prefer_canvas != null else (canvas if canvas != null else null)
+	# Sort in-place by depth then name
+	canvases.sort_custom(Callable(self, "_canvas_less_than"))
+	# Recompute active index
+	if keep != null:
+		active_canvas_index = canvases.find(keep)
+		if active_canvas_index == -1 and canvases.size() > 0:
+			active_canvas_index = 0
+	else:
+		active_canvas_index = min(active_canvas_index, canvases.size() - 1)
+	# Apply active canvas binding and tabs
+	_set_active_canvas(active_canvas_index)
+	_sync_tabs()
+	_emit_canvases_updated()
+	# Refresh underlays (depth-based set may have changed)
+	_rebuild_underlay_layers()
+
+func _rebuild_underlay_layers() -> void:
+	if underlay_container == null:
+		return
+	# Clear previous preview layers
+	for child in underlay_container.get_children():
+		child.queue_free()
+	underlay_container.visible = false
+	if canvas == null:
+		return
+	var active_depth := canvas.depth
+	# Build list of canvases with depth greater than active
+	var preview_list: Array[PaintCanvasState] = []
+	for c in canvases:
+		if c != canvas and c.depth > active_depth:
+			preview_list.append(c)
+	# Sort that subset by the same rule (depth, then name)
+	preview_list.sort_custom(Callable(self, "_canvas_less_than"))
+	# Create TextureRects for each
+	for c in preview_list:
+		var tex_rect := TextureRect.new()
+		tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tex_rect.texture = c.canvas_tex
+		tex_rect.size = c.canvas_resolution
+		tex_rect.position = Vector2.ZERO
+		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP
+		underlay_container.add_child(tex_rect)
+	underlay_container.visible = not preview_list.is_empty()
 
 # ---- Raster painting ---------------------------------------------------------
 
@@ -471,6 +552,10 @@ func _apply_view_transform() -> void:
 	# Keep backdrop behind and matching transform
 	backdrop.position = view_origin
 	backdrop.size = Vector2(drawing_rect.size) * zoom
+	# Move/scale underlay container to match
+	if underlay_container != null:
+		underlay_container.position = view_origin
+		underlay_container.scale = Vector2(zoom, zoom)
 
 func _set_zoom(target: float, pivot_vp: Vector2) -> void:
 	var old_zoom := zoom
@@ -609,9 +694,13 @@ func load_project(path: String) -> void:
 		return
 	canvases = new_canvases
 	active_canvas_index = -1
-	_sync_tabs()
-	_set_active_canvas(int(data.get("active_canvas_index", 0)))
-	_emit_canvases_updated()
+	# Resort loaded canvases and restore active selection if possible
+	var desired_idx: int = int(data.get("active_canvas_index", 0))
+	if desired_idx >= 0 and desired_idx < canvases.size():
+		var target := canvases[desired_idx]
+		_resort_and_refresh(target)
+	else:
+		_resort_and_refresh(null)
 
 # ---- Public proxy methods ---------------------------------------------------
 
@@ -665,3 +754,35 @@ func set_brush_data_list(v: Array) -> void:
 
 func get_brush_data_list() -> Array:
 	return canvas.brush_data_list if canvas != null else []
+
+# ---- Resolution editing -----------------------------------------------------
+
+func resize_active_canvas(new_w: int, new_h: int) -> void:
+	if canvas == null:
+		return
+	new_w = max(1, new_w)
+	new_h = max(1, new_h)
+	var old_img: Image = canvas.canvas_img
+	var new_img := Image.create(new_w, new_h, false, Image.FORMAT_RGBA8)
+	new_img.fill(Color(0, 0, 0, 0))
+	# Copy the overlapping region (top-left anchor)
+	var copy_w: int = min(new_w, old_img.get_width())
+	var copy_h: int = min(new_h, old_img.get_height())
+	if copy_w > 0 and copy_h > 0:
+		var src_rect := Rect2i(Vector2i.ZERO, Vector2i(copy_w, copy_h))
+		new_img.blit_rect(old_img, src_rect, Vector2i.ZERO)
+	# Swap into canvas state
+	canvas.canvas_img = new_img
+	canvas.canvas_tex = ImageTexture.create_from_image(new_img)
+	canvas.canvas_resolution = Vector2(new_w, new_h)
+	canvas.drawing_rect = Rect2i(Vector2i.ZERO, Vector2i(new_w, new_h))
+	# Clear undo/redo stacks as their sizes no longer match
+	canvas.undo_stack.clear()
+	canvas.redo_stack.clear()
+	canvas.undo_log_stack.clear()
+	canvas.redo_log_stack.clear()
+	# Rebind visuals and notify
+	_init_canvas()
+	image_updated.emit(canvas.canvas_img)
+	canvas.emit_image_updated()
+	_emit_canvases_updated()
