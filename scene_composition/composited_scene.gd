@@ -173,7 +173,9 @@ func _build_gltf_document(pixels_per_unit: float, scale_depth: bool) -> Dictiona
 		})
 
 		# Image/Texture/Material
-		var img_b64 := Marshalls.raw_to_base64(layer.canvas.canvas_img.save_png_to_buffer())
+		# Compose a white SDF-based fill (10px) behind the layer before export
+		var img_to_export: Image = _composite_with_sdf_fill(layer.canvas.canvas_img, 10.0, Color(1, 1, 1, 1))
+		var img_b64 := Marshalls.raw_to_base64(img_to_export.save_png_to_buffer())
 		var img_index: int = gltf.images.size()
 		gltf.images.append({
 			"uri": "data:image/png;base64," + img_b64,
@@ -225,6 +227,42 @@ func _build_gltf_document(pixels_per_unit: float, scale_depth: bool) -> Dictiona
 
 	gltf.scenes = [{"nodes": scene_node_indices}]
 	return gltf
+
+static func _composite_with_sdf_fill(src: Image, radius: float, fill_color: Color, alpha_threshold := 0.5) -> Image:
+	if src == null:
+		return Image.new()
+	var w := src.get_width()
+	var h := src.get_height()
+	if w <= 0 or h <= 0:
+		return Image.new()
+
+	# Generate background fill where within 'radius' of any opaque pixel
+	var fill_img: Image = SDFUtil.sdf_flood_fill(src, radius, fill_color, alpha_threshold)
+	fill_img.save_png(OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS) + "/sdf_fill.png")
+
+	# Composite: src over fill
+	var out := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	# out.lock()
+	# src.lock()
+	# fill_img.lock()
+	for y in range(h):
+		for x in range(w):
+			var bg := fill_img.get_pixel(x, y)
+			var fg := src.get_pixel(x, y)
+			# Alpha blend: fg over bg (straight alpha)
+			var out_a: float = clampf(fg.a + bg.a * (1.0 - fg.a), 0.0, 1.0)
+			var out_r: float = 0.0
+			var out_g: float = 0.0
+			var out_b: float = 0.0
+			if out_a > 0.0:
+				out_r = (fg.r * fg.a + bg.r * bg.a * (1.0 - fg.a)) / out_a
+				out_g = (fg.g * fg.a + bg.g * bg.a * (1.0 - fg.a)) / out_a
+				out_b = (fg.b * fg.a + bg.b * bg.a * (1.0 - fg.a)) / out_a
+			out.set_pixel(x, y, Color(out_r, out_g, out_b, out_a))
+	# fill_img.unlock()
+	# src.unlock()
+	# out.unlock()
+	return out
 
 static func _align4(n: int) -> int:
 	var r := n % 4

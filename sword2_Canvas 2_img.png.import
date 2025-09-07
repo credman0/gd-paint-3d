@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://badu86ntgnb1g"
-path.s3tc="res://.godot/imported/sword_Canvas 2_img.png-b964ba7afb1268db75e20e6f1b3e69b1.s3tc.ctex"
+uid="uid://d1xqctiirs8le"
+path.s3tc="res://.godot/imported/sword2_Canvas 2_img.png-5470da77c1f9ea395db4f5d248961d21.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "3906343bae4f3543f472e54fb10bd3d8"
+"md5": "407920a58dd8782a8e570a4b80a07e9a"
 }
 
 [deps]
 
-source_file="res://sword_Canvas 2_img.png"
-dest_files=["res://.godot/imported/sword_Canvas 2_img.png-b964ba7afb1268db75e20e6f1b3e69b1.s3tc.ctex"]
+source_file="res://sword2_Canvas 2_img.png"
+dest_files=["res://.godot/imported/sword2_Canvas 2_img.png-5470da77c1f9ea395db4f5d248961d21.s3tc.ctex"]
 
 [params]
 
