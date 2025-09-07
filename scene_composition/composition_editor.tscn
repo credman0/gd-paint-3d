@@ -43,14 +43,25 @@ step = 0.01
 [node name="AspectRatioContainer" type="AspectRatioContainer" parent="HSplitContainer"]
 layout_mode = 2
 
-[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/AspectRatioContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="HSplitContainer/AspectRatioContainer"]
+layout_mode = 2
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/AspectRatioContainer/MarginContainer"]
 layout_mode = 2
 stretch = true
 
-[node name="SubViewport" type="SubViewport" parent="HSplitContainer/AspectRatioContainer/SubViewportContainer"]
+[node name="SubViewport" type="SubViewport" parent="HSplitContainer/AspectRatioContainer/MarginContainer/SubViewportContainer"]
 handle_input_locally = false
 size = Vector2i(648, 648)
 render_target_update_mode = 4
 
-[node name="CompositedScene" parent="HSplitContainer/AspectRatioContainer/SubViewportContainer/SubViewport" instance=ExtResource("1_3wogf")]
+[node name="CompositedScene" parent="HSplitContainer/AspectRatioContainer/MarginContainer/SubViewportContainer/SubViewport" instance=ExtResource("1_3wogf")]
 unique_name_in_owner = true
+
+[node name="RotationSlider" type="HSlider" parent="HSplitContainer/AspectRatioContainer/MarginContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = -90.0
+max_value = 90.0
+
+[connection signal="drag_ended" from="HSplitContainer/AspectRatioContainer/MarginContainer/RotationSlider" to="." method="_on_rotation_slider_drag_ended"]

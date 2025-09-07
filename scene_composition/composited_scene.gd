@@ -3,12 +3,21 @@ class_name CompositedScene extends Node3D
 signal layers_updated
 signal depth_changed(index: int, depth: float)
 
+@onready var camera: Camera3D = %Camera3D
 @onready var layers_parent: Node3D = %Layers
 
 var depths: Array[float] = []
 var layers: Array[PaintedLayer] = []
 
 const PAINTED_LAYER_SCENE: PackedScene = preload("res://scene_composition/painted_layer.tscn")
+
+var view_angle: float = 0.0:
+	set(value):
+		view_angle = value
+		var distance = camera.transform.origin.length()
+		var rotated_pos = Vector3(0, 0, distance).rotated(Vector3.UP, deg_to_rad(view_angle))
+		camera.transform.origin = rotated_pos
+		camera.look_at(Vector3.ZERO, Vector3.UP)
 
 func update_from_canvases(canvases: Array[PaintCanvasState], names: PackedStringArray = PackedStringArray()) -> void:
 	# Clear out existing layers

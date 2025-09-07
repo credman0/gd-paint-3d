@@ -3,6 +3,7 @@ extends MarginContainer
 @onready var composited_scene: CompositedScene = %CompositedScene
 @onready var layer_list: ItemList = %LayerList
 @onready var depth_slider: HSlider = %DepthSlider
+@onready var rotation_slider: HSlider = %RotationSlider
 
 var _selected_index: int = -1
 var _canvas_names: PackedStringArray = []
@@ -84,3 +85,8 @@ func set_canvases(canvases: Array, names: PackedStringArray) -> void:
 	else:
 		_selected_index = -1
 		_update_controls_enabled()
+
+
+func _on_rotation_slider_drag_ended(value_changed: bool) -> void:
+	if value_changed:
+		composited_scene.view_angle = rotation_slider.value

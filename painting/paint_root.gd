@@ -541,14 +541,14 @@ func redo_stroke() -> void:
 # ---- Helpers ----------------------------------------------------------------
 
 func _mouse_down_inside_canvas() -> bool:
-	return mouse_click_start_pos != Vector2.INF \
+	return is_visible_in_tree() and mouse_click_start_pos != Vector2.INF \
 		and _display_rect_vp().has_point(mouse_click_start_pos)
 
 func _mouse_inside_canvas_now() -> bool:
-	return is_mouse_in_drawing_area
+	return is_visible_in_tree() and is_mouse_in_drawing_area
 
 func _mouse_up_inside_canvas() -> bool:
-	return is_mouse_in_drawing_area
+	return is_visible_in_tree() and is_mouse_in_drawing_area
 
 func save_picture(path: String) -> void:
 	await RenderingServer.frame_post_draw
