@@ -26,7 +26,8 @@ func init_canvas() -> void:
 	var sz: Vector2 = canvas_resolution.floor()
 	drawing_rect = Rect2i(Vector2i.ZERO, Vector2i(int(sz.x), int(sz.y)))
 	canvas_img = Image.create(drawing_rect.size.x, drawing_rect.size.y, false, Image.FORMAT_RGBA8)
-	canvas_img.fill(bg_color)
+	# Start fully transparent; UI may show a backdrop behind this image
+	canvas_img.fill(Color(0, 0, 0, 0))
 	canvas_tex = ImageTexture.create_from_image(canvas_img)
 
 func begin_stroke_snapshot() -> void:

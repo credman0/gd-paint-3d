@@ -12,6 +12,7 @@ enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
 enum BrushShapes { RECTANGLE, CIRCLE }
 
 @onready var drawing_area: TextureRect = $"DrawingArea" # TextureRect
+@onready var backdrop: ColorRect = $"Backdrop" # Neutral gray underlay
 @onready var canvas_tabs: TabBar = %CanvasTabBar
 var drawing_rect: Rect2i
 
@@ -82,6 +83,9 @@ var _last_image_emit_ts_ms: int = 0
 func _ready() -> void:
 	Input.use_accumulated_input = false
 	tools = PaintToolsState.new()
+	# Initialize neutral gray backdrop
+	if backdrop:
+		backdrop.color = tools.bg_color
 	# Tabs: create initial canvas and wire up switching
 	canvas_tabs.tab_selected.connect(_on_canvas_tabs_tab_selected)
 	_add_new_canvas()
@@ -97,6 +101,8 @@ func _init_canvas() -> void:
 	drawing_area.texture = canvas.canvas_tex
 	# Ensure the TextureRect matches logical canvas pixel size; scale is applied separately via zoom
 	drawing_area.size = Vector2(drawing_rect.size)
+	# Backdrop mirrors the drawing area footprint
+	backdrop.size = drawing_area.size
 	_apply_view_transform()
 
 # ---- Multi-canvas management -----------------------------------------------
@@ -134,9 +140,9 @@ func _set_active_canvas(idx: int) -> void:
 	idx = clampi(idx, 0, canvases.size() - 1)
 	active_canvas_index = idx
 	canvas = canvases[idx]
-	# Sync tool bg color with active canvas
-	if tools != null:
-		tools.bg_color = canvas.bg_color
+	# Keep current backdrop color; don't override tools' bg on canvas switch
+	if backdrop != null and tools != null:
+		backdrop.color = tools.bg_color
 	# Re-bind drawing area to active canvas
 	_init_canvas()
 	# Ensure tab selection matches
@@ -440,6 +446,9 @@ func _apply_view_transform() -> void:
 	drawing_area.scale = Vector2(zoom, zoom)
 	# Keep the control sized to the logical canvas pixels
 	drawing_area.size = Vector2(drawing_rect.size)
+	# Keep backdrop behind and matching transform
+	backdrop.position = view_origin
+	backdrop.size = Vector2(drawing_rect.size) * zoom
 
 func _set_zoom(target: float, pivot_vp: Vector2) -> void:
 	var old_zoom := zoom
@@ -572,6 +581,8 @@ func set_bg_color(v: Color) -> void:
 		tools.bg_color = v
 	if canvas != null:
 		canvas.bg_color = v
+	if backdrop != null:
+		backdrop.color = v
 
 func get_bg_color() -> Color:
 	return tools.bg_color if tools != null else Color.WHITE

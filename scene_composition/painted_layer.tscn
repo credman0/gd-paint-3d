@@ -10,6 +10,9 @@ viewport_path = NodePath("SubViewport")
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xbh13"]
 resource_local_to_scene = true
+transparency = 2
+alpha_scissor_threshold = 0.5
+alpha_antialiasing_mode = 0
 albedo_texture = SubResource("ViewportTexture_hnk4l")
 
 [node name="PaintedLayer" type="Node3D"]
@@ -17,6 +20,7 @@ script = ExtResource("1_hnk4l")
 
 [node name="SubViewport" type="SubViewport" parent="."]
 unique_name_in_owner = true
+transparent_bg = true
 size = Vector2i(1024, 1024)
 
 [node name="TextureRect" type="TextureRect" parent="SubViewport"]

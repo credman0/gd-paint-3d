@@ -16,7 +16,7 @@ var brush_mode: int = BrushModes.PEN
 var brush_size: int = 32
 var brush_color: Color = Color.BLACK
 var brush_shape: int = BrushShapes.CIRCLE
-var bg_color: Color = Color.WHITE
+var bg_color: Color = Color(0.5, 0.5, 0.5, 1.0)
 
 func update_pressure_from_event(mm: InputEventMouseMotion) -> void:
 	current_pressure = clampf(mm.pressure, 0.0, 1.0)
@@ -24,7 +24,8 @@ func update_pressure_from_event(mm: InputEventMouseMotion) -> void:
 		brush_mode = BrushModes.ERASER
 
 func current_color() -> Color:
-	return bg_color if brush_mode == BrushModes.ERASER else brush_color
+	# Eraser clears to transparency; background is a separate UI backdrop
+	return Color(0, 0, 0, 0) if brush_mode == BrushModes.ERASER else brush_color
 
 func is_pressure_brush() -> bool:
 	return brush_mode == BrushModes.PEN or brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER
