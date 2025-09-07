@@ -1,3 +1,6 @@
-[gd_scene format=3 uid="uid://cy4j0l5tttmtq"]
+[gd_scene load_steps=2 format=3 uid="uid://cy4j0l5tttmtq"]
+
+[ext_resource type="Script" uid="uid://dpnu1pnpertf0" path="res://scene_composition/composited_scene.gd" id="1_blcub"]
 
 [node name="CompositedScene" type="Node3D"]
+script = ExtResource("1_blcub")

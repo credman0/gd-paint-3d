@@ -1,5 +1,6 @@
-[gd_scene load_steps=5 format=3 uid="uid://coxvq1q7mjiwa"]
+[gd_scene load_steps=6 format=3 uid="uid://coxvq1q7mjiwa"]
 
+[ext_resource type="Script" uid="uid://biklr7qy1nfrr" path="res://scene_composition/painted_layer.gd" id="1_hnk4l"]
 [ext_resource type="Texture2D" uid="uid://brwp8bimc75uu" path="res://icon.webp" id="1_rt7o2"]
 
 [sub_resource type="QuadMesh" id="QuadMesh_rt7o2"]
@@ -12,6 +13,7 @@ resource_local_to_scene = true
 albedo_texture = SubResource("ViewportTexture_hnk4l")
 
 [node name="PaintedLayer" type="Node3D"]
+script = ExtResource("1_hnk4l")
 
 [node name="SubViewport" type="SubViewport" parent="."]
 unique_name_in_owner = true

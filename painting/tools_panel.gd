@@ -101,7 +101,7 @@ func brush_color_changed(color):
 
 func background_color_changed(color):
 	# Change the background color to whatever colorthe background color picker is.
-	get_parent().get_node(^"DrawingAreaBG").modulate = color
+	# get_parent().get_node(^"DrawingAreaBG").modulate = color
 	paint_control.bg_color = color
 	# Because of how the eraser works we also need to redraw the paint control.
 	paint_control.queue_redraw()
