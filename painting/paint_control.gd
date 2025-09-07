@@ -1,5 +1,7 @@
 extends Control
 
+signal image_updated(image: Image)
+
 const UNDO_NONE := -1
 
 enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
@@ -7,6 +9,14 @@ enum BrushShapes { RECTANGLE, CIRCLE }
 
 @onready var drawing_area: TextureRect = $"../DrawingArea" # TextureRect
 var drawing_rect: Rect2i
+
+# View transform (pan/zoom)
+var canvas_resolution: Vector2 = Vector2(1024, 768) # logical pixel size of the canvas
+var zoom: float = 1.0
+var min_zoom: float = 0.25
+var max_zoom: float = 8.0
+var view_origin: Vector2 = Vector2.ZERO # top-left of the canvas in viewport coordinates
+var panning: bool = false
 
 # Raster
 var canvas_img: Image
@@ -48,14 +58,21 @@ var _current_record: Dictionary = {}
 func _ready() -> void:
 	Input.use_accumulated_input = false
 	_init_canvas()
+	# Initialize view origin to current placement of DrawingArea (if any), then apply transform
+	view_origin = drawing_area.position
+	_apply_view_transform()
 
 func _init_canvas() -> void:
-	var sz: Vector2 = drawing_area.size.floor()
+	# Use configured canvas resolution rather than control size
+	var sz: Vector2 = canvas_resolution.floor()
 	drawing_rect = Rect2i(Vector2i.ZERO, Vector2i(int(sz.x), int(sz.y)))
 	canvas_img = Image.create(drawing_rect.size.x, drawing_rect.size.y, false, Image.FORMAT_RGBA8)
 	canvas_img.fill(bg_color)
 	canvas_tex = ImageTexture.create_from_image(canvas_img)
 	drawing_area.texture = canvas_tex
+	# Ensure the TextureRect matches logical canvas pixel size; scale is applied separately via zoom
+	drawing_area.size = Vector2(drawing_rect.size)
+	_apply_view_transform()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
@@ -63,11 +80,31 @@ func _input(event: InputEvent) -> void:
 		_current_pressure = clampf(mm.pressure, 0.0, 1.0)
 		if mm.pen_inverted:
 			brush_mode = BrushModes.ERASER
+		# Handle panning with middle-mouse drag
+		if panning:
+			view_origin += mm.relative
+			_apply_view_transform()
+
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_MIDDLE:
+			panning = mb.pressed
+			return
+		# Wheel zoom (cursor-centric)
+		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+			var factor := 1.1
+			var target_zoom := zoom * (factor if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / factor)
+			_set_zoom(target_zoom, get_viewport().get_mouse_position())
 
 func _process(_dt: float) -> void:
 	var mouse_pos_vp: Vector2 = get_viewport().get_mouse_position()
-	var area_rect_vp := Rect2(drawing_area.position, drawing_area.size)
+	var area_rect_vp := _display_rect_vp()
 	is_mouse_in_drawing_area = area_rect_vp.has_point(mouse_pos_vp)
+
+	# When panning, don't process painting
+	if panning:
+		last_mouse_pos = mouse_pos_vp
+		return
 
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		if mouse_click_start_pos == Vector2.INF:
@@ -96,9 +133,10 @@ func _process(_dt: float) -> void:
 # ---- Raster painting ---------------------------------------------------------
 
 func _viewport_to_canvas(p: Vector2) -> Vector2i:
+	# Inverse of display transform: (p - origin) / zoom -> pixel coords
 	return Vector2i(
-		clampi(int(floor(p.x - drawing_area.position.x)), 0, drawing_rect.size.x - 1),
-		clampi(int(floor(p.y - drawing_area.position.y)), 0, drawing_rect.size.y - 1)
+		clampi(int(floor((p.x - view_origin.x) / zoom)), 0, drawing_rect.size.x - 1),
+		clampi(int(floor((p.y - view_origin.y) / zoom)), 0, drawing_rect.size.y - 1)
 	)
 
 func _current_color() -> Color:
@@ -275,6 +313,30 @@ func _blend_pixel(x: int, y: int, col: Color, a: float) -> void:
 
 func _update_texture() -> void:
 	canvas_tex.update(canvas_img)
+	image_updated.emit(canvas_img)
+
+# ---- View transform helpers -------------------------------------------------
+
+func _display_rect_vp() -> Rect2:
+	# Rect in viewport coordinates that the canvas occupies
+	return Rect2(view_origin, Vector2(drawing_rect.size) * zoom)
+
+func _apply_view_transform() -> void:
+	# Apply pan/zoom to the drawing area for visual feedback
+	drawing_area.position = view_origin
+	drawing_area.scale = Vector2(zoom, zoom)
+	# Keep the control sized to the logical canvas pixels
+	drawing_area.size = Vector2(drawing_rect.size)
+
+func _set_zoom(target: float, pivot_vp: Vector2) -> void:
+	var old_zoom := zoom
+	zoom = clampf(target, min_zoom, max_zoom)
+	if abs(zoom - old_zoom) < 0.0001:
+		return
+	# Keep the cursor position stable relative to the canvas while zooming
+	var factor := zoom / old_zoom
+	view_origin = pivot_vp - (pivot_vp - view_origin) * factor
+	_apply_view_transform()
 
 # ---- Stroke record logging ---------------------------------------------------
 
@@ -373,7 +435,7 @@ func redo_stroke() -> void:
 
 func _mouse_down_inside_canvas() -> bool:
 	return mouse_click_start_pos != Vector2.INF \
-		and Rect2(drawing_area.position, drawing_area.size).has_point(mouse_click_start_pos)
+		and _display_rect_vp().has_point(mouse_click_start_pos)
 
 func _mouse_inside_canvas_now() -> bool:
 	return is_mouse_in_drawing_area
