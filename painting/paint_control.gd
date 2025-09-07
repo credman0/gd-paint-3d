@@ -320,6 +320,7 @@ func _blend_pixel(x: int, y: int, col: Color, a: float) -> void:
 func _update_texture() -> void:
 	canvas.canvas_tex.update(canvas.canvas_img)
 	image_updated.emit(canvas.canvas_img)
+	canvas.emit_image_updated()
 
 # ---- View transform helpers -------------------------------------------------
 
