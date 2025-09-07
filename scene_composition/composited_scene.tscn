@@ -1,7 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://cy4j0l5tttmtq"]
+[gd_scene load_steps=2 format=3 uid="uid://cy4j0l5tttmtq"]
 
 [ext_resource type="Script" uid="uid://dpnu1pnpertf0" path="res://scene_composition/composited_scene.gd" id="1_blcub"]
-[ext_resource type="PackedScene" uid="uid://coxvq1q7mjiwa" path="res://scene_composition/painted_layer.tscn" id="2_1wkim"]
 
 [node name="CompositedScene" type="Node3D"]
 script = ExtResource("1_blcub")
@@ -11,6 +10,3 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.80472)
 
 [node name="Layers" type="Node3D" parent="."]
 unique_name_in_owner = true
-
-[node name="PaintedLayer" parent="Layers" instance=ExtResource("2_1wkim")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.1851)
