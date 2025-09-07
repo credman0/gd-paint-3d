@@ -318,6 +318,18 @@ text = "Save picture"
 metadata/_edit_layout_mode = 0
 metadata/_edit_use_custom_anchors = false
 
+[node name="ButtonSaveProject" type="Button" parent="VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+text = "Save project"
+
+[node name="ButtonLoadProject" type="Button" parent="VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+text = "Load project"
+
 [node name="ButtonClear" type="Button" parent="VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2

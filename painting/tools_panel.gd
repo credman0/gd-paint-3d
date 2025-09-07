@@ -9,13 +9,17 @@ extends Panel
 @onready var depth_slider: HSlider = %CanvasDepthSlider
 
 @onready var _parent = get_parent()
-@onready var save_dialog = _parent.get_parent().get_node(^"SaveFileDialog")
+@onready var export_dialog: FileDialog = _parent.get_parent().get_node(^"SaveFileDialog")
+@onready var save_project_dialog: FileDialog = _ensure_project_save_dialog()
+@onready var load_project_dialog: FileDialog = _ensure_project_load_dialog()
 @onready var paint_control = _parent.get_parent()
 
 func _ready():
 	# Assign all of the needed signals for the oppersation buttons.
 	%ButtonUndo.pressed.connect(button_pressed.bind("undo_stroke"))
-	%ButtonSave.pressed.connect(button_pressed.bind("save_picture"))
+	%ButtonSave.pressed.connect(button_pressed.bind("export_picture"))
+	%ButtonSaveProject.pressed.connect(button_pressed.bind("save_project"))
+	%ButtonLoadProject.pressed.connect(button_pressed.bind("load_project"))
 	%ButtonClear.pressed.connect(button_pressed.bind("clear_picture"))
 
 	# Assign all of the needed signals for the brush buttons.
@@ -32,8 +36,12 @@ func _ready():
 	%ColorPickerBackground.color_changed.connect(background_color_changed)
 	%HScrollBarBrushSize.value_changed.connect(brush_size_changed)
 
-	# Assign the "file_selected" signal in SaveFileDialog.
-	save_dialog.file_selected.connect(save_file_selected)
+	# Assign file dialogs
+	export_dialog.file_selected.connect(save_file_selected)
+	if save_project_dialog:
+		save_project_dialog.file_selected.connect(_on_save_project_file)
+	if load_project_dialog:
+		load_project_dialog.file_selected.connect(_on_load_project_file)
 
 	# Set physics process so we can update the status label.
 	set_physics_process(true)
@@ -105,8 +113,14 @@ func button_pressed(button_name):
 	elif button_name == "clear_picture":
 		paint_control.brush_data_list = []
 		paint_control.queue_redraw()
-	elif button_name == "save_picture":
-		save_dialog.popup_centered()
+	elif button_name == "export_picture":
+		export_dialog.popup_centered()
+	elif button_name == "save_project":
+		if save_project_dialog:
+			save_project_dialog.popup_centered()
+	elif button_name == "load_project":
+		if load_project_dialog:
+			load_project_dialog.popup_centered()
 	elif button_name == "undo_stroke":
 		paint_control.undo_stroke()
 
@@ -137,8 +151,44 @@ func brush_size_changed(value):
 
 
 func save_file_selected(path):
-	# Call save_picture in paint_control, passing in the path we recieved from SaveFileDialog.
-	paint_control.save_picture(path)
+	# Call export_picture in paint_control, passing in the path we received from SaveFileDialog.
+	if paint_control.has_method(&"export_picture"):
+		paint_control.export_picture(path)
+
+func _on_save_project_file(path: String) -> void:
+	if paint_control and paint_control.has_method(&"save_project"):
+		paint_control.save_project(path)
+
+func _on_load_project_file(path: String) -> void:
+	if paint_control and paint_control.has_method(&"load_project"):
+		paint_control.load_project(path)
+
+func _ensure_project_save_dialog() -> FileDialog:
+	var root := _parent.get_parent()
+	if root.has_node(^"SaveProjectDialog"):
+		return root.get_node(^"SaveProjectDialog")
+	# Create a minimal dialog at runtime if not present in scene
+	var dlg := FileDialog.new()
+	dlg.name = "SaveProjectDialog"
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dlg.filters = PackedStringArray(["*.gdpaint,;GD Paint Project (*.gdpaint)"])
+	dlg.current_dir = OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	root.add_child.call_deferred(dlg)
+	return dlg
+
+func _ensure_project_load_dialog() -> FileDialog:
+	var root := _parent.get_parent()
+	if root.has_node(^"LoadProjectDialog"):
+		return root.get_node(^"LoadProjectDialog")
+	var dlg := FileDialog.new()
+	dlg.name = "LoadProjectDialog"
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dlg.filters = PackedStringArray(["*.gdpaint,;GD Paint Project (*.gdpaint)"])
+	dlg.current_dir = OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	root.add_child.call_deferred(dlg)
+	return dlg
 
 
 func _unhandled_input(event):

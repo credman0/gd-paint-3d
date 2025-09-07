@@ -565,9 +565,53 @@ func _mouse_inside_canvas_now() -> bool:
 func _mouse_up_inside_canvas() -> bool:
 	return is_visible_in_tree() and is_mouse_in_drawing_area
 
-func save_picture(path: String) -> void:
+func export_picture(path: String) -> void:
 	await RenderingServer.frame_post_draw
-	canvas.save_png(path)
+	if canvas != null:
+		canvas.export_png(path)
+
+func save_project(path: String) -> void:
+	# Serialize all canvases into a single JSON file.
+	# Path should typically have a custom extension, e.g. .gdpaint
+	var payload: Dictionary = {
+		"version": 1,
+		"active_canvas_index": active_canvas_index,
+		"canvases": []
+	}
+	for c in canvases:
+		payload["canvases"].append(c.serialize())
+	var json_text := JSON.stringify(payload)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_string(json_text)
+		f.close()
+
+func load_project(path: String) -> void:
+	# Load from a JSON file and replace current canvases.
+	if not FileAccess.file_exists(path):
+		return
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return
+	var txt := f.get_as_text()
+	f.close()
+	var parse: Variant = JSON.parse_string(txt)
+	if typeof(parse) != TYPE_DICTIONARY:
+		return
+	var data: Dictionary = parse
+	var new_canvases: Array[PaintCanvasState] = []
+	var arr: Array = data.get("canvases", [])
+	for item in arr:
+		if typeof(item) == TYPE_DICTIONARY:
+			var s := PaintCanvasState.deserialize(item)
+			new_canvases.append(s)
+	if new_canvases.is_empty():
+		return
+	canvases = new_canvases
+	active_canvas_index = -1
+	_sync_tabs()
+	_set_active_canvas(int(data.get("active_canvas_index", 0)))
+	_emit_canvases_updated()
 
 # ---- Public proxy methods ---------------------------------------------------
 
