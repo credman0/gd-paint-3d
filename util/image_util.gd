@@ -103,3 +103,165 @@ static func _edt_1d(f: PackedFloat32Array, n: int) -> PackedFloat32Array:
 		var dist := q - float(v[k])
 		d[q] = dist * dist + f[v[k]]
 	return d
+
+# Fills all enclosed background regions (holes) with `fill_color`.
+# Foreground is alpha >= alpha_threshold. Background is alpha < alpha_threshold.
+# Connectivity: 4 or 8.
+static func fill_enclosed_areas(src: Image, fill_color: Color, alpha_threshold := 0.5, connectivity := 4) -> Image:
+	assert(src != null)
+	var w := src.get_width()
+	var h := src.get_height()
+	assert(w > 0 and h > 0)
+	assert(connectivity == 4 or connectivity == 8)
+
+	# Build background mask
+	var bg := PackedByteArray() # 1 = background, 0 = foreground
+	bg.resize(w * h)
+	# src.lock()
+	for y in range(h):
+		for x in range(w):
+			var idx := y * w + x
+			bg[idx] = 1 if src.get_pixel(x, y).a < alpha_threshold else 0
+	# src.unlock()
+
+	# Mark outside-connected background via BFS from borders
+	var outside := PackedByteArray() # 1 = outside background, 0 = unknown/inside
+	outside.resize(w * h)
+	var q := [] # int queue of linear indices
+	q.resize(0)
+
+	# Helper to enqueue if background and not yet marked
+	var _try_enqueue := func(ix: int, iy: int) -> void:
+		if ix < 0 or iy < 0 or ix >= w or iy >= h:
+			return
+		var i := iy * w + ix
+		if bg[i] == 1 and outside[i] == 0:
+			outside[i] = 1
+			q.push_back(i)
+
+	# Seed with all border pixels that are background
+	for x in range(w):
+		_try_enqueue.call(x, 0)
+		_try_enqueue.call(x, h - 1)
+	for y in range(h):
+		_try_enqueue.call(0, y)
+		_try_enqueue.call(w - 1, y)
+
+	# Neighborhood
+	var dirs := [[1,0],[-1,0],[0,1],[0,-1]]
+	if connectivity == 8:
+		dirs += [[1,1],[1,-1],[-1,1],[-1,-1]]
+
+	# BFS flood from border background
+	var head := 0
+	while head < q.size():
+		var idx: int = q[head]
+		head += 1
+		var x := idx % w
+		var y := floori(float(idx) / float(w))
+		for d in dirs:
+			_try_enqueue.call(x + d[0], y + d[1])
+
+	# Fill enclosed background (bg==1 and not outside)
+	var out := src.duplicate()
+	# out.lock()
+	for y in range(h):
+		for x in range(w):
+			var i := y * w + x
+			if bg[i] == 1 and outside[i] == 0:
+				out.set_pixel(x, y, fill_color)
+	# out.unlock()
+	return out
+
+
+# Computes the smallest axis-aligned bounding box that contains all non-transparent
+# pixels (alpha >= alpha_threshold) across the provided images, assuming they are
+# all aligned to the same origin.
+# Returns an empty Rect2i (size 0,0) if no non-transparent pixels are found.
+static func compute_combined_bounds(images: Array, alpha_threshold := 0.5) -> Rect2i:
+	assert(images != null)
+	if images.is_empty():
+		return Rect2i(0, 0, 0, 0)
+
+	var min_x := 2147483647
+	var min_y := 2147483647
+	var max_x := -1
+	var max_y := -1
+
+	for img in images:
+		if img == null:
+			continue
+		var image: Image = img as Image
+		if image == null:
+			continue
+		var w: int = image.get_width()
+		var h: int = image.get_height()
+		if w <= 0 or h <= 0:
+			continue
+		# img.lock()
+		for y in range(h):
+			for x in range(w):
+				if image.get_pixel(x, y).a >= alpha_threshold:
+					if x < min_x:
+						min_x = x
+					if y < min_y:
+						min_y = y
+					if x > max_x:
+						max_x = x
+					if y > max_y:
+						max_y = y
+		# img.unlock()
+
+	if max_x < 0 or max_y < 0:
+		return Rect2i(0, 0, 0, 0)
+
+	# Convert inclusive max to size
+	return Rect2i(min_x, min_y, max(0, max_x - min_x + 1), max(0, max_y - min_y + 1))
+
+
+# Crops each image to the given bounding box and uniformly scales the cropped region
+# so that it fits within target_size while preserving aspect ratio.
+# Returns a new Array of Images, one per input image. Areas outside the image bounds
+# during cropping are treated as transparent.
+# If bbox is empty or target_size has non-positive dimensions, returns empty array.
+static func scale_images_to_fit_from_bbox(images: Array, bbox: Rect2i, target_size: Vector2i, interpolation: int = Image.INTERPOLATE_BILINEAR) -> Array:
+	assert(images != null)
+	var result := []
+	if bbox.size.x <= 0 or bbox.size.y <= 0:
+		return result
+	if target_size.x <= 0 or target_size.y <= 0:
+		return result
+
+	var sx: float = float(target_size.x) / float(bbox.size.x)
+	var sy: float = float(target_size.y) / float(bbox.size.y)
+	var scale: float = min(sx, sy)
+	var out_w: int = int(round(float(bbox.size.x) * scale))
+	var out_h: int = int(round(float(bbox.size.y) * scale))
+	out_w = max(1, out_w)
+	out_h = max(1, out_h)
+
+	for img in images:
+		if img == null:
+			result.push_back(null)
+			continue
+		var image: Image = img as Image
+		if image == null:
+			result.push_back(null)
+			continue
+
+		# Prepare a transparent crop the size of the bbox, then blit the intersection
+		var cropped: Image = Image.create(bbox.size.x, bbox.size.y, false, Image.FORMAT_RGBA8)
+		cropped.fill(Color(0, 0, 0, 0))
+
+		# Intersect bbox with image bounds
+		var src_rect := Rect2i(0, 0, image.get_width(), image.get_height())
+		var isect := bbox.intersection(src_rect)
+		if isect.size.x > 0 and isect.size.y > 0:
+			var dst_pos := isect.position - bbox.position
+			cropped.blit_rect(image, isect, dst_pos)
+
+		# Resize uniformly to fit target size
+		cropped.resize(out_w, out_h, interpolation)
+		result.push_back(cropped)
+
+	return result

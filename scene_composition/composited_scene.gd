@@ -98,15 +98,47 @@ func _build_gltf_document(pixels_per_unit: float, scale_depth: bool) -> Dictiona
 		gltf.scenes = [{"nodes": []}]
 		return gltf
 
+	# --- Pre-scale images using ImageUtil helpers ---
+	# Collect exportable layers and their source images
+	var export_indices: Array[int] = []
+	var src_images: Array = []
+	var max_canvas_w: int = 0
+	var max_canvas_h: int = 0
+	for i in range(layers.size()):
+		var layer_i: PaintedLayer = layers[i]
+		if layer_i == null or layer_i.canvas == null or layer_i.canvas.canvas_img == null:
+			continue
+		export_indices.append(i)
+		src_images.append(layer_i.canvas.canvas_img)
+		var res: Vector2 = layer_i.canvas.canvas_resolution
+		max_canvas_w = max(max_canvas_w, int(res.x))
+		max_canvas_h = max(max_canvas_h, int(res.y))
+
+	var scaled_map := {}
+	if export_indices.size() > 0 and max_canvas_w > 0 and max_canvas_h > 0:
+		var bbox: Rect2i = ImageUtil.compute_combined_bounds(src_images, 0.5)
+		if bbox.size.x > 0 and bbox.size.y > 0:
+			var target_size := Vector2i(max_canvas_w, max_canvas_h)
+			var scaled_list: Array = ImageUtil.scale_images_to_fit_from_bbox(src_images, bbox, target_size, Image.INTERPOLATE_BILINEAR)
+			if scaled_list.size() == export_indices.size():
+				for j in range(export_indices.size()):
+					scaled_map[export_indices[j]] = scaled_list[j]
+
 	for i in range(layers.size()):
 		var layer: PaintedLayer = layers[i]
 		if layer == null or layer.canvas == null or layer.canvas.canvas_img == null:
 			continue
 
 		var layer_name_ := layer.layer_name if layer.layer_name != "" else "Layer %d" % i
-		var sz: Vector2 = layer.canvas.canvas_resolution
-		var w_px := float(sz.x)
-		var h_px := float(sz.y)
+
+		# Use pre-scaled image if available, else fall back to original
+		var src_img: Image = layer.canvas.canvas_img
+		if scaled_map.has(i):
+			var cand: Image = scaled_map[i]
+			if cand != null:
+				src_img = cand
+		var w_px := float(src_img.get_width())
+		var h_px := float(src_img.get_height())
 		var inv_ppu: float = 1.0 / max(pixels_per_unit, 1.0)
 		var w: float = w_px * inv_ppu
 		var h: float = h_px * inv_ppu
@@ -174,7 +206,7 @@ func _build_gltf_document(pixels_per_unit: float, scale_depth: bool) -> Dictiona
 
 		# Image/Texture/Material
 		# Compose a white SDF-based fill (10px) behind the layer before export
-		var img_to_export: Image = _composite_with_sdf_fill(layer.canvas.canvas_img, 10.0, Color(1, 1, 1, 1))
+		var img_to_export: Image = _composite_with_sdf_fill(src_img, 10.0, Color(1, 1, 1, 1))
 		var img_b64 := Marshalls.raw_to_base64(img_to_export.save_png_to_buffer())
 		var img_index: int = gltf.images.size()
 		gltf.images.append({
@@ -238,18 +270,31 @@ static func _composite_with_sdf_fill(src: Image, radius: float, fill_color: Colo
 
 	# Generate background fill where within 'radius' of any opaque pixel
 	var fill_img: Image = ImageUtil.sdf_flood_fill(src, radius, fill_color, alpha_threshold)
-	fill_img.save_png(OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS) + "/sdf_fill.png")
+	var enclosed_img: Image = ImageUtil.fill_enclosed_areas(fill_img, fill_color, alpha_threshold)
 
-	# Composite: src over fill
+	# Composite: src over (enclosed over fill)
 	var out := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	# out.lock()
 	# src.lock()
 	# fill_img.lock()
+	# enclosed_img.lock()
 	for y in range(h):
 		for x in range(w):
-			var bg := fill_img.get_pixel(x, y)
+			# Compose enclosed_img over fill_img to form the final background
+			var enc := enclosed_img.get_pixel(x, y)
+			var fl := fill_img.get_pixel(x, y)
+			var bg_a := clampf(enc.a + fl.a * (1.0 - enc.a), 0.0, 1.0)
+			var bg_r := 0.0
+			var bg_g := 0.0
+			var bg_b := 0.0
+			if bg_a > 0.0:
+				bg_r = (enc.r * enc.a + fl.r * fl.a * (1.0 - enc.a)) / bg_a
+				bg_g = (enc.g * enc.a + fl.g * fl.a * (1.0 - enc.a)) / bg_a
+				bg_b = (enc.b * enc.a + fl.b * fl.a * (1.0 - enc.a)) / bg_a
+			var bg := Color(bg_r, bg_g, bg_b, bg_a)
+
+			# Now composite src over that background (straight alpha)
 			var fg := src.get_pixel(x, y)
-			# Alpha blend: fg over bg (straight alpha)
 			var out_a: float = clampf(fg.a + bg.a * (1.0 - fg.a), 0.0, 1.0)
 			var out_r: float = 0.0
 			var out_g: float = 0.0
@@ -259,6 +304,7 @@ static func _composite_with_sdf_fill(src: Image, radius: float, fill_color: Colo
 				out_g = (fg.g * fg.a + bg.g * bg.a * (1.0 - fg.a)) / out_a
 				out_b = (fg.b * fg.a + bg.b * bg.a * (1.0 - fg.a)) / out_a
 			out.set_pixel(x, y, Color(out_r, out_g, out_b, out_a))
+	# enclosed_img.unlock()
 	# fill_img.unlock()
 	# src.unlock()
 	# out.unlock()
