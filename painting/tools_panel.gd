@@ -72,6 +72,7 @@ func _ready():
 		if paint_control and paint_control.canvases.size() > 0 and paint_control.active_canvas_index >= 0:
 			var c: PaintCanvasState = paint_control.canvases[paint_control.active_canvas_index]
 			depth_slider.value = c.depth
+			_update_depth_label()
 	# React to active canvas changes to keep text in sync
 	if paint_control.has_signal(&"active_canvas_changed"):
 		paint_control.active_canvas_changed.connect(_on_active_canvas_changed)
@@ -320,3 +321,50 @@ func _update_resolution_fields() -> void:
 func _on_apply_resolution() -> void:
 	if paint_control and paint_control.has_method(&"resize_active_canvas") and res_w_spin and res_h_spin:
 		paint_control.resize_active_canvas(int(res_w_spin.value), int(res_h_spin.value))
+
+func _on_delete_button_pressed() -> void:
+	var root := _parent.get_parent()
+	# Create a confirmation dialog at runtime
+	var dlg := ConfirmationDialog.new()
+	dlg.name = "ConfirmDeleteDialog"
+	dlg.title = "Delete canvas"
+	dlg.dialog_text = "Delete the current canvas? This cannot be undone."
+	root.add_child(dlg)
+	dlg.popup_centered()
+
+	# When confirmed, attempt to remove the active canvas using available API or by mutating list.
+	dlg.confirmed.connect(func() -> void:
+		if paint_control != null:
+			var idx: int = paint_control.active_canvas_index
+			if idx >= 0 and idx < paint_control.canvases.size():
+				# Prefer using known removal methods if provided by paint_control
+				if paint_control.has_method("delete_active_canvas"):
+					paint_control.delete_active_canvas()
+				elif paint_control.has_method("remove_active_canvas"):
+					paint_control.remove_active_canvas()
+				elif paint_control.has_method("remove_canvas_at_index"):
+					paint_control.remove_canvas_at_index(idx)
+				elif paint_control.has_method("remove_canvas"):
+					paint_control.remove_canvas(idx)
+				else:
+					# Fall back to manipulating the canvases array directly
+					paint_control.canvases.remove_at(idx)
+					# Clamp active index
+					if paint_control.active_canvas_index >= paint_control.canvases.size():
+						paint_control.active_canvas_index = paint_control.canvases.size() - 1
+					if paint_control.active_canvas_index < 0 and paint_control.canvases.size() > 0:
+						paint_control.active_canvas_index = 0
+					paint_control.queue_redraw()
+
+				# Refresh UI to reflect deletion
+				_update_resolution_fields()
+				_update_depth_label()
+				if tab_name_line_edit and paint_control and paint_control.has_method(&"get_active_canvas_title"):
+					tab_name_line_edit.text = paint_control.get_active_canvas_title()
+		dlg.queue_free()
+	)
+
+	# Ensure the dialog is freed if the user cancels/closes it
+	if dlg.has_signal(&"canceled"):
+		dlg.canceled.connect(func() -> void: dlg.queue_free())
+	

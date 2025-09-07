@@ -95,7 +95,12 @@ func _ready() -> void:
 	tools = PaintToolsState.new()
 	# Initialize neutral gray backdrop
 	if backdrop:
+		# Let clicks pass through so _unhandled_input can start strokes
+		backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		backdrop.color = tools.bg_color
+	# Ensure the drawing texture doesn't intercept UI input
+	if drawing_area:
+		drawing_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Tabs: create initial canvas and wire up switching
 	canvas_tabs.tab_selected.connect(_on_canvas_tabs_tab_selected)
 	_add_new_canvas()
@@ -248,13 +253,36 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_MIDDLE:
-			panning = mb.pressed
+			# Only allow panning initiation while cursor is over the canvas rect
+			if mb.pressed:
+				panning = _display_rect_vp().has_point(mb.position)
+			else:
+				panning = false
 			return
 		# Wheel zoom (cursor-centric)
 		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+			# Only zoom when mouse is over the canvas
+			if not _display_rect_vp().has_point(mb.position):
+				return
 			var factor := 1.1
 			var target_zoom := zoom * (factor if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / factor)
 			_set_zoom(target_zoom, get_viewport().get_mouse_position())
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		# Start stroke only from GUI input inside the canvas rect using global (viewport) coords
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and not stroke_active:
+			# Use the global (viewport) mouse position to match _process/_display_rect_vp space
+			var pos_vp: Vector2 = mb.global_position
+			if _display_rect_vp().has_point(pos_vp):
+				mouse_click_start_pos = pos_vp
+				last_paint_pos = pos_vp
+				_begin_stroke_snapshot()
+				_begin_record()
+				stroke_active = true
+				accept_event()
+				return
 
 func _process(_dt: float) -> void:
 	# Flush pending image-updated signal at most once per interval
@@ -270,13 +298,7 @@ func _process(_dt: float) -> void:
 		return
 
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		if mouse_click_start_pos == Vector2.INF:
-			mouse_click_start_pos = mouse_pos_vp
-			last_paint_pos = mouse_pos_vp
-			if _mouse_down_inside_canvas():
-				_begin_stroke_snapshot()
-				_begin_record()
-				stroke_active = true
+		# Stroke starts are handled in _unhandled_input so GUI interactions don't start painting
 
 		if stroke_active and _mouse_inside_canvas_now():
 			if tools.brush_mode == BrushModes.PEN or tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.CRAYON or tools.brush_mode == BrushModes.ERASER:
@@ -881,6 +903,53 @@ func load_project(path: String) -> void:
 		_resort_and_refresh(target)
 	else:
 		_resort_and_refresh(null)
+
+# ---- Canvas deletion APIs --------------------------------------------------
+
+func delete_active_canvas() -> void:
+	# Remove the currently active canvas. If it's the last one, replace with a fresh blank canvas
+	# that preserves the previous resolution/depth to keep the app in a valid state.
+	if canvases.is_empty():
+		return
+	var idx := active_canvas_index
+	if idx < 0 or idx >= canvases.size():
+		idx = 0
+	_delete_canvas_at_index(idx)
+
+func remove_active_canvas() -> void:
+	# Compatibility alias
+	delete_active_canvas()
+
+func remove_canvas_at_index(idx: int) -> void:
+	_delete_canvas_at_index(idx)
+
+func remove_canvas(idx: int) -> void:
+	# Compatibility alias to match potential external callers
+	_delete_canvas_at_index(idx)
+
+func _delete_canvas_at_index(idx: int) -> void:
+	if canvases.is_empty():
+		return
+	idx = clampi(idx, 0, canvases.size() - 1)
+	if canvases.size() == 1:
+		# Replace the only canvas with a fresh one preserving resolution/depth/bg
+		var old: PaintCanvasState = canvases[0]
+		var s := PaintCanvasState.new()
+		s.canvas_resolution = old.canvas_resolution
+		s.depth = old.depth
+		s.bg_color = old.bg_color
+		s.init_canvas()
+		s.canvas_name = "Canvas 1"
+		canvases[0] = s
+		# Rebind and refresh state; prefer the new canvas
+		_resort_and_refresh(s)
+		return
+
+	# Remove and activate a neighboring canvas (prefer same index, else previous)
+	canvases.remove_at(idx)
+	var next_idx: int = int(min(idx, canvases.size() - 1))
+	var target: PaintCanvasState = canvases[next_idx]
+	_resort_and_refresh(target)
 
 # ---- Preview opacity control (public) --------------------------------------
 

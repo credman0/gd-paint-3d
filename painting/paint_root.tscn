@@ -36,6 +36,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
 [node name="ToolsPanel" parent="HBoxContainer" instance=ExtResource("2_8cdl7")]
 layout_mode = 2
@@ -43,6 +44,7 @@ layout_mode = 2
 [node name="Control" type="Control" parent="HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
+mouse_filter = 2
 
 [node name="CanvasTabBar" type="TabBar" parent="HBoxContainer/Control"]
 unique_name_in_owner = true
