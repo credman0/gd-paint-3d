@@ -237,7 +237,7 @@ static func _composite_with_sdf_fill(src: Image, radius: float, fill_color: Colo
 		return Image.new()
 
 	# Generate background fill where within 'radius' of any opaque pixel
-	var fill_img: Image = SDFUtil.sdf_flood_fill(src, radius, fill_color, alpha_threshold)
+	var fill_img: Image = ImageUtil.sdf_flood_fill(src, radius, fill_color, alpha_threshold)
 	fill_img.save_png(OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS) + "/sdf_fill.png")
 
 	# Composite: src over fill

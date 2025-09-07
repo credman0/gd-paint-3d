@@ -1,4 +1,4 @@
-class_name SDFUtil
+class_name ImageUtil
 
 # Generates an SDF from 'src' and returns an image that is bg_color
 # wherever distance_to_nearest_foreground <= radius, else transparent.
