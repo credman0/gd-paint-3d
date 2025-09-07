@@ -11,6 +11,7 @@ enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
 enum BrushShapes { RECTANGLE, CIRCLE }
 
 @onready var drawing_area: TextureRect = $"DrawingArea" # TextureRect
+@onready var canvas_tabs: TabBar = %CanvasTabs
 var drawing_rect: Rect2i
 
 # View transform (pan/zoom)
