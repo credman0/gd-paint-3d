@@ -10,7 +10,7 @@ var layers: Array[PaintedLayer] = []
 
 const PAINTED_LAYER_SCENE: PackedScene = preload("res://scene_composition/painted_layer.tscn")
 
-func update_from_canvases(canvases: Array[PaintCanvasState]) -> void:
+func update_from_canvases(canvases: Array[PaintCanvasState], names: PackedStringArray = PackedStringArray()) -> void:
 	# Clear out existing layers
 	layers.clear()
 	for child in layers_parent.get_children():
@@ -21,7 +21,8 @@ func update_from_canvases(canvases: Array[PaintCanvasState]) -> void:
 		if depths.size() <= i:
 			depths.append(0.0)
 		layer.set_depth(depths[i])
-		layer.layer_name = "Layer " + str(i)
+		var nm := (names[i] if i < names.size() else "")
+		layer.layer_name = nm if nm != "" else "Layer " + str(i)
 		layers_parent.add_child(layer)
 		layers.append(layer)
 

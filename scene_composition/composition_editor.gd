@@ -5,6 +5,7 @@ extends MarginContainer
 @onready var depth_slider: HSlider = %DepthSlider
 
 var _selected_index: int = -1
+var _canvas_names: PackedStringArray = []
 
 func _ready() -> void:
 	_populate_layers()
@@ -25,7 +26,7 @@ func _populate_layers() -> void:
 		return
 	for i in range(composited_scene.layers.size()):
 		var layer: PaintedLayer = composited_scene.layers[i]
-		var layer_label := layer.layer_name if layer.layer_name != "" else "Layer %d" % i
+		var layer_label := layer.layer_name if layer.layer_name != "" else (_canvas_names[i] if i < _canvas_names.size() else "Layer %d" % i)
 		layer_list.add_item(layer_label)
 
 func _on_layer_selected(index: int) -> void:
@@ -51,7 +52,7 @@ func _on_depth_changed(value: float) -> void:
 func _update_controls_enabled() -> void:
 	var enabled := _selected_index >= 0
 	depth_slider.mouse_filter = Control.MOUSE_FILTER_PASS if enabled else Control.MOUSE_FILTER_IGNORE
-	depth_slider.modulate.a = 1.0 if enabled else 0.5
+	depth_slider.modulate.a = 1.0 if enabled else 0.1
 
 func _on_layers_updated() -> void:
 	var prev := _selected_index
@@ -69,3 +70,17 @@ func _on_depth_changed_external(index: int, value: float) -> void:
 		depth_slider.set_block_signals(true)
 		depth_slider.value = value
 		depth_slider.set_block_signals(false)
+
+# Public API for external wiring: receive canvas list and names
+func set_canvases(canvases: Array, names: PackedStringArray) -> void:
+	_canvas_names = names
+	if composited_scene:
+		composited_scene.update_from_canvases(canvases, names)
+	_populate_layers()
+	if composited_scene and composited_scene.layers.size() > 0:
+		_selected_index = min(_selected_index, composited_scene.layers.size() - 1) if _selected_index >= 0 else 0
+		layer_list.select(_selected_index)
+		_sync_depth_ui()
+	else:
+		_selected_index = -1
+		_update_controls_enabled()

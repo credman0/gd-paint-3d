@@ -2,6 +2,7 @@ extends Control
 
 signal image_updated(image: Image)
 signal active_canvas_changed(index: int, title: String)
+signal canvases_updated(canvases: Array, names: PackedStringArray)
 
 const UNDO_NONE := -1
 
@@ -94,6 +95,8 @@ func _ready() -> void:
 	_apply_view_transform()
 	# Initialize image update throttle clock
 	_last_image_emit_ts_ms = Time.get_ticks_msec()
+	# Inform listeners (e.g., composition editor) of initial canvas list
+	_emit_canvases_updated()
 
 func _init_canvas() -> void:
 	# Bind TextureRect to canvas state
@@ -133,6 +136,7 @@ func _add_new_canvas() -> void:
 	canvas_names.append("Canvas %d" % canvases.size())
 	_set_active_canvas(canvases.size() - 1)
 	_sync_tabs()
+	_emit_canvases_updated()
 
 func _set_active_canvas(idx: int) -> void:
 	if canvases.is_empty():
@@ -176,6 +180,14 @@ func rename_active_canvas(title: String) -> void:
 	if active_canvas_index < canvas_tabs.get_tab_count():
 		canvas_tabs.set_tab_title(active_canvas_index, title)
 	active_canvas_changed.emit(active_canvas_index, title)
+	_emit_canvases_updated()
+
+func _emit_canvases_updated() -> void:
+	# Emit a snapshot of canvases and their names for external consumers
+	var names_psa := PackedStringArray()
+	for n in canvas_names:
+		names_psa.append(n)
+	canvases_updated.emit(canvases, names_psa)
 
 func get_active_canvas_title() -> String:
 	if canvases.is_empty() or active_canvas_index < 0:
