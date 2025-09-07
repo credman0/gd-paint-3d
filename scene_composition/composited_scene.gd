@@ -48,3 +48,241 @@ func set_depth(index: int, depth: float) -> void:
 	if layers[index].canvas:
 		layers[index].canvas.depth = depth
 	emit_signal("depth_changed", index, depth)
+
+# --- glTF (JSON .gltf) Export -------------------------------------------------
+
+## Export the current composited scene as a glTF 2.0 JSON (.gltf) file with
+## embedded PNG images and buffers. Each layer becomes a textured quad placed
+## at its depth (negative Z like in the runtime).
+func export_gltf(path: String) -> int:
+	var doc := _build_gltf_document()
+	if doc.is_empty():
+		return ERR_INVALID_DATA
+	var json := JSON.stringify(doc, "\t")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return ERR_CANT_OPEN
+	f.store_string(json)
+	f.flush()
+	f.close()
+	return OK
+
+func _build_gltf_document() -> Dictionary:
+	var gltf: Dictionary = {
+		"asset": {"version": "2.0", "generator": "gdpaint-composited-scene"},
+		"extensionsUsed": ["KHR_materials_unlit"],
+		"scenes": [],
+		"scene": 0,
+		"nodes": [],
+		"meshes": [],
+		"materials": [],
+		"textures": [],
+		"images": [],
+		"samplers": [{
+			"magFilter": 9729, # LINEAR
+			"minFilter": 9729, # LINEAR
+			"wrapS": 10497,    # REPEAT
+			"wrapT": 10497     # REPEAT
+		}],
+		"buffers": [],
+		"bufferViews": [],
+		"accessors": [],
+	}
+
+	var scene_node_indices: Array[int] = []
+
+	# Early out: nothing to export
+	if layers.size() == 0:
+		gltf.scenes = [{"nodes": []}]
+		return gltf
+
+	for i in range(layers.size()):
+		var layer: PaintedLayer = layers[i]
+		if layer == null or layer.canvas == null or layer.canvas.canvas_img == null:
+			continue
+
+		var layer_name_ := layer.layer_name if layer.layer_name != "" else "Layer %d" % i
+		var sz: Vector2 = layer.canvas.canvas_resolution
+		var w := float(sz.x)
+		var h := float(sz.y)
+
+		# 1) Build a single-quad mesh buffer for this layer
+		var quad := _build_textured_quad_bytes(w, h)
+		var buffer_index: int = gltf.buffers.size()
+		gltf.buffers.append({
+			"byteLength": quad.bytes.size(),
+			"uri": "data:application/octet-stream;base64," + Marshalls.raw_to_base64(quad.bytes),
+			"name": layer_name_ + "_buf"
+		})
+
+		# BufferViews
+		var bv_pos: int = gltf.bufferViews.size()
+		gltf.bufferViews.append({
+			"buffer": buffer_index,
+			"byteOffset": quad.pos_offset,
+			"byteLength": quad.pos_length,
+			"target": 34962 # ARRAY_BUFFER
+		})
+		var bv_uv: int = gltf.bufferViews.size()
+		gltf.bufferViews.append({
+			"buffer": buffer_index,
+			"byteOffset": quad.uv_offset,
+			"byteLength": quad.uv_length,
+			"target": 34962 # ARRAY_BUFFER
+		})
+		var bv_idx: int = gltf.bufferViews.size()
+		gltf.bufferViews.append({
+			"buffer": buffer_index,
+			"byteOffset": quad.idx_offset,
+			"byteLength": quad.idx_length,
+			"target": 34963 # ELEMENT_ARRAY_BUFFER
+		})
+
+		# Accessors
+		var minx := -w * 0.5
+		var maxx := w * 0.5
+		var miny := -h * 0.5
+		var maxy := h * 0.5
+		var acc_pos: int = gltf.accessors.size()
+		gltf.accessors.append({
+			"bufferView": bv_pos,
+			"componentType": 5126, # FLOAT
+			"count": 4,
+			"type": "VEC3",
+			"min": [minx, miny, 0.0],
+			"max": [maxx, maxy, 0.0]
+		})
+		var acc_uv: int = gltf.accessors.size()
+		gltf.accessors.append({
+			"bufferView": bv_uv,
+			"componentType": 5126, # FLOAT
+			"count": 4,
+			"type": "VEC2"
+		})
+		var acc_idx: int = gltf.accessors.size()
+		gltf.accessors.append({
+			"bufferView": bv_idx,
+			"componentType": 5123, # UNSIGNED_SHORT
+			"count": 6,
+			"type": "SCALAR"
+		})
+
+		# Image/Texture/Material
+		var img_b64 := Marshalls.raw_to_base64(layer.canvas.canvas_img.save_png_to_buffer())
+		var img_index: int = gltf.images.size()
+		gltf.images.append({
+			"uri": "data:image/png;base64," + img_b64,
+			"mimeType": "image/png",
+			"name": layer_name_ + "_img"
+		})
+		var tex_index: int = gltf.textures.size()
+		gltf.textures.append({
+			"sampler": 0,
+			"source": img_index,
+			"name": layer_name_ + "_tex"
+		})
+		var mat_index: int = gltf.materials.size()
+		gltf.materials.append({
+			"name": layer_name_ + "_mat",
+			"pbrMetallicRoughness": {
+				"baseColorTexture": {"index": tex_index},
+				"metallicFactor": 0.0,
+				"roughnessFactor": 1.0
+			},
+			"doubleSided": true,
+			"alphaMode": "BLEND",
+			"extensions": {"KHR_materials_unlit": {}}
+		})
+
+		# Mesh
+		var mesh_index: int = gltf.meshes.size()
+		gltf.meshes.append({
+			"name": layer_name_ + "_mesh",
+			"primitives": [{
+				"attributes": {
+					"POSITION": acc_pos,
+					"TEXCOORD_0": acc_uv
+				},
+				"indices": acc_idx,
+				"material": mat_index,
+				"mode": 4 # TRIANGLES
+			}]
+		})
+
+		# Node placed at negative Z depth (as shown in runtime)
+		var node_index: int = gltf.nodes.size()
+		gltf.nodes.append({
+			"name": layer_name_,
+			"mesh": mesh_index,
+			"translation": [0.0, 0.0, -float(layer.depth)]
+		})
+		scene_node_indices.append(node_index)
+
+	gltf.scenes = [{"nodes": scene_node_indices}]
+	return gltf
+
+static func _align4(n: int) -> int:
+	var r := n % 4
+	return n if r == 0 else (n + (4 - r))
+
+static func _build_textured_quad_bytes(width: float, height: float) -> Dictionary:
+	# Build a single quad centered at origin, lying on the XY plane (Z=0):
+	# v0(-w/2,  h/2)  v1(w/2,  h/2)
+	# v3(-w/2, -h/2)  v2(w/2, -h/2)
+	# UVs are mapped so that top-left of the image is (0,0).
+	var hw := width * 0.5
+	var hh := height * 0.5
+
+	var sp_pos := StreamPeerBuffer.new()
+	sp_pos.big_endian = false
+	# v0
+	sp_pos.put_float(-hw); sp_pos.put_float(hh); sp_pos.put_float(0.0)
+	# v1
+	sp_pos.put_float(hw); sp_pos.put_float(hh); sp_pos.put_float(0.0)
+	# v2
+	sp_pos.put_float(hw); sp_pos.put_float(-hh); sp_pos.put_float(0.0)
+	# v3
+	sp_pos.put_float(-hw); sp_pos.put_float(-hh); sp_pos.put_float(0.0)
+	var bytes_pos: PackedByteArray = sp_pos.get_data_array()
+
+	var sp_uv := StreamPeerBuffer.new()
+	sp_uv.big_endian = false
+	# Using V=0 at top to match typical 2D image coordinates
+	sp_uv.put_float(0.0); sp_uv.put_float(0.0) # v0
+	sp_uv.put_float(1.0); sp_uv.put_float(0.0) # v1
+	sp_uv.put_float(1.0); sp_uv.put_float(1.0) # v2
+	sp_uv.put_float(0.0); sp_uv.put_float(1.0) # v3
+	var bytes_uv: PackedByteArray = sp_uv.get_data_array()
+
+	var sp_idx := StreamPeerBuffer.new()
+	sp_idx.big_endian = false
+	# Two triangles: (0,1,2) and (0,2,3)
+	sp_idx.put_u16(0); sp_idx.put_u16(1); sp_idx.put_u16(2)
+	sp_idx.put_u16(0); sp_idx.put_u16(2); sp_idx.put_u16(3)
+	var bytes_idx: PackedByteArray = sp_idx.get_data_array()
+
+	# Concatenate with 4-byte alignment between views
+	var pos_offset := 0
+	var uv_offset := _align4(bytes_pos.size())
+	var idx_offset := _align4(uv_offset + bytes_uv.size())
+	var _total_len := idx_offset + bytes_idx.size()
+
+	var all_bytes := PackedByteArray()
+	# Positions
+	all_bytes.append_array(bytes_pos)
+	all_bytes.resize(uv_offset) # pad with zeros to UV offset
+	# UVs
+	all_bytes.append_array(bytes_uv)
+	all_bytes.resize(idx_offset) # pad to index offset
+	# Indices
+	all_bytes.append_array(bytes_idx)
+
+	return {
+		"bytes": all_bytes,
+		"pos_offset": pos_offset,
+		"pos_length": bytes_pos.size(),
+		"uv_offset": uv_offset,
+		"uv_length": bytes_uv.size(),
+		"idx_offset": idx_offset,
+		"idx_length": bytes_idx.size(),
+	}

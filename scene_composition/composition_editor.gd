@@ -93,3 +93,30 @@ func set_canvases(canvases: Array, names: PackedStringArray) -> void:
 func _on_rotation_slider_drag_ended(value_changed: bool) -> void:
 	if value_changed:
 		composited_scene.view_angle = rotation_slider.value
+
+# --- Export helpers -----------------------------------------------------------
+
+func export_scene_as_gltf(path: String) -> int:
+	if composited_scene == null:
+		return ERR_UNCONFIGURED
+	return composited_scene.export_gltf(path)
+
+func _ensure_project_export_dialog() -> FileDialog:
+	var root := get_tree().root
+	if root.has_node(^"ExportDialog"):
+		return root.get_node(^"ExportDialog")
+	# Create a minimal dialog at runtime if not present in scene
+	var dlg := FileDialog.new()
+	dlg.name = "ExportDialog"
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dlg.filters = PackedStringArray(["*.gltf,;GLTF Files (*.gltf)"])
+	dlg.current_dir = OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	root.add_child.call_deferred(dlg)
+	return dlg
+
+func _on_export_pressed() -> void:
+	var dlg := _ensure_project_export_dialog()
+	if !dlg.is_connected("file_selected", export_scene_as_gltf):
+		dlg.connect("file_selected", export_scene_as_gltf)
+	dlg.popup_centered()
