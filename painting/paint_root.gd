@@ -18,6 +18,7 @@ enum BrushShapes { RECTANGLE, CIRCLE }
 @onready var canvas_tabs: TabBar = %CanvasTabBar
 var underlay_container: Control = null # Holds preview TextureRects for other layers
 var drawing_rect: Rect2i
+var _is_rebuilding_tabs: bool = false
 
 # View transform (pan/zoom)
 var zoom: float = 1.0
@@ -119,6 +120,8 @@ func _init_canvas() -> void:
 func _sync_tabs() -> void:
 	# Rebuild tabs: one per canvas + a trailing '+' tab
 	canvas_tabs.clear_tabs()
+	_is_rebuilding_tabs = true
+	canvas_tabs.set_block_signals(true)
 	# Ensure names helper array stays in sync in length (derive from canvas state)
 	canvas_names.resize(canvases.size())
 	for i in range(canvases.size()):
@@ -130,6 +133,10 @@ func _sync_tabs() -> void:
 	# Keep selection on the active canvas (not the '+')
 	if active_canvas_index >= 0 and active_canvas_index < canvases.size():
 		canvas_tabs.current_tab = active_canvas_index
+	else:
+		canvas_tabs.current_tab = (0 if canvases.size() > 0 else -1)
+	canvas_tabs.set_block_signals(false)
+	_is_rebuilding_tabs = false
 
 func _add_new_canvas() -> void:
 	var s := PaintCanvasState.new()
@@ -145,6 +152,10 @@ func _set_active_canvas(idx: int) -> void:
 	if canvases.is_empty():
 		return
 	idx = clampi(idx, 0, canvases.size() - 1)
+	if active_canvas_index == idx and canvas == canvases[idx]:
+		# Still update UI bindings in case only texture/size changed
+		_init_canvas()
+		return
 	active_canvas_index = idx
 	canvas = canvases[idx]
 	# Keep current backdrop color; don't override tools' bg on canvas switch
@@ -153,13 +164,19 @@ func _set_active_canvas(idx: int) -> void:
 	# Re-bind drawing area to active canvas
 	_init_canvas()
 	# Ensure tab selection matches
-	if canvas_tabs.get_tab_count() > 0 and active_canvas_index < canvas_tabs.get_tab_count() and canvas_tabs.current_tab != active_canvas_index:
-		canvas_tabs.current_tab = active_canvas_index
+	if canvas_tabs.get_tab_count() > 0 and active_canvas_index < canvas_tabs.get_tab_count():
+		if canvas_tabs.current_tab != active_canvas_index:
+			canvas_tabs.set_block_signals(true)
+			canvas_tabs.current_tab = active_canvas_index
+			canvas_tabs.set_block_signals(false)
 	# Notify listeners (e.g., tools panel) about active canvas change
 	var title := canvas.canvas_name if canvas.canvas_name != "" else "Canvas %d" % (active_canvas_index + 1)
 	active_canvas_changed.emit(active_canvas_index, title)
 
 func _on_canvas_tabs_tab_selected(idx: int) -> void:
+	# Ignore spurious selections during rebuild or invalid indices
+	if _is_rebuilding_tabs or idx < 0:
+		return
 	# If the '+' tab is clicked, create a new canvas instead of selecting it
 	if idx == canvases.size():
 		_add_new_canvas()
