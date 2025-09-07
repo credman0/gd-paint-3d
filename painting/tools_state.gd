@@ -2,7 +2,7 @@ extends RefCounted
 
 class_name PaintToolsState
 
-enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
+enum BrushModes { PEN, PENCIL, CRAYON, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
 enum BrushShapes { RECTANGLE, CIRCLE }
 
 # Pressure
@@ -28,7 +28,7 @@ func current_color() -> Color:
 	return Color(0, 0, 0, 0) if brush_mode == BrushModes.ERASER else brush_color
 
 func is_pressure_brush() -> bool:
-	return brush_mode == BrushModes.PEN or brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.ERASER
+	return brush_mode == BrushModes.PEN or brush_mode == BrushModes.PENCIL or brush_mode == BrushModes.CRAYON or brush_mode == BrushModes.ERASER
 
 func size_from_pressure(base_size: int) -> int:
 	if not pressure_enabled or not is_pressure_brush():

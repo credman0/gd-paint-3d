@@ -1,5 +1,6 @@
 extends Panel
 
+@onready var depth_label: Label = %LabelCanvasDepth
 @onready var brush_settings = %BrushSettings
 @onready var label_brush_size = %LabelBrushSize
 @onready var label_brush_shape = %LabelBrushShape
@@ -28,6 +29,8 @@ func _ready():
 	# Assign all of the needed signals for the brush buttons.
 	%ButtonToolPen.pressed.connect(button_pressed.bind("mode_pen"))
 	%ButtonToolPencil.pressed.connect(button_pressed.bind("mode_pencil"))
+	if has_node(^"%ButtonToolCrayon"):
+		%ButtonToolCrayon.pressed.connect(button_pressed.bind("mode_crayon"))
 	%ButtonToolEraser.pressed.connect(button_pressed.bind("mode_eraser"))
 	%ButtonToolRectangle.pressed.connect(button_pressed.bind("mode_rectangle"))
 	%ButtonToolCircle.pressed.connect(button_pressed.bind("mode_circle"))
@@ -97,6 +100,10 @@ func button_pressed(button_name):
 		paint_control.brush_mode = paint_control.BrushModes.PENCIL
 		brush_settings.modulate = Color(1, 1, 1, 1)
 		tool_name = "Pencil"
+	elif button_name == "mode_crayon":
+		paint_control.brush_mode = paint_control.BrushModes.CRAYON
+		brush_settings.modulate = Color(1, 1, 1, 1)
+		tool_name = "Crayon"
 	elif button_name == "mode_eraser":
 		paint_control.brush_mode = paint_control.BrushModes.ERASER
 		brush_settings.modulate = Color(1, 1, 1, 1)
@@ -233,6 +240,7 @@ func _on_active_canvas_changed(_idx: int, title: String) -> void:
 func _on_depth_changed(value: float) -> void:
 	if paint_control and paint_control.has_method(&"set_active_canvas_depth"):
 		paint_control.set_active_canvas_depth(value)
+		_update_depth_label()
 
 func _on_canvas_depth_changed(index: int, value: float) -> void:
 	# if the active canvas changed depth externally, mirror in slider
@@ -240,6 +248,14 @@ func _on_canvas_depth_changed(index: int, value: float) -> void:
 		depth_slider.set_block_signals(true)
 		depth_slider.value = value
 		depth_slider.set_block_signals(false)
+
+	_update_depth_label()
+
+func _update_depth_label() -> void:
+	if depth_label and paint_control:
+		var idx: int = paint_control.active_canvas_index
+		if idx >= 0 and idx < paint_control.canvases.size():
+			depth_label.text = "Depth: %.2f" % paint_control.canvases[idx].depth
 
 func _update_resolution_fields() -> void:
 	if res_w_spin == null or res_h_spin == null or paint_control == null:

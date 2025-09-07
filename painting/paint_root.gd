@@ -10,7 +10,7 @@ const UNDO_NONE := -1
 # Use global classes declared via class_name in canvas_state.gd and tools_state.gd
 
 # Public enums (API compatibility for other scripts like tools_panel.gd)
-enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
+enum BrushModes { PEN, PENCIL, CRAYON, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
 enum BrushShapes { RECTANGLE, CIRCLE }
 
 @onready var drawing_area: TextureRect = $"DrawingArea" # TextureRect
@@ -273,7 +273,7 @@ func _process(_dt: float) -> void:
 				stroke_active = true
 
 		if stroke_active and _mouse_inside_canvas_now():
-			if tools.brush_mode == BrushModes.PEN or tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.ERASER:
+			if tools.brush_mode == BrushModes.PEN or tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.CRAYON or tools.brush_mode == BrushModes.ERASER:
 				_paint_line(last_paint_pos, mouse_pos_vp)
 				last_paint_pos = mouse_pos_vp
 	else:
@@ -428,19 +428,25 @@ func _stamp_at(p: Vector2i) -> void:
 func _stamp_at_unsafe(p: Vector2i) -> void:
 	var size_px: int = tools.size_from_pressure(tools.brush_size)
 	var col := _current_color()
-	var use_textured: bool = tools.brush_mode == BrushModes.PENCIL
+	var use_textured: bool = tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.CRAYON
 	match tools.brush_shape:
 		BrushShapes.RECTANGLE:
 			var half: int = size_px >> 1
 			var tl := Vector2i(p.x - half, p.y - half)
 			if use_textured:
-				_fill_rect_textured_unsafe(tl, Vector2i(size_px, size_px), col)
+				if tools.brush_mode == BrushModes.CRAYON:
+					_fill_rect_crayon_unsafe(tl, Vector2i(size_px, size_px), col)
+				else:
+					_fill_rect_textured_unsafe(tl, Vector2i(size_px, size_px), col)
 			else:
 				_fill_rect_unsafe(tl, Vector2i(size_px, size_px), col)
 		BrushShapes.CIRCLE:
 			var r: int = size_px >> 1
 			if use_textured:
-				_fill_circle_textured_unsafe(p, r, col)
+				if tools.brush_mode == BrushModes.CRAYON:
+					_fill_circle_crayon_unsafe(p, r, col)
+				else:
+					_fill_circle_textured_unsafe(p, r, col)
 			else:
 				_fill_circle_unsafe(p, r, col)
 
@@ -536,6 +542,68 @@ func _blend_pixel(x: int, y: int, col: Color, a: float) -> void:
 	var out: Color = dst.lerp(col, a)
 	canvas.canvas_img.set_pixel(x, y, out)
 
+# --- Crayon (heavily textured, waxy fill across whole stroke interior) ------
+func _crayon_base_alpha() -> float:
+	# Crayon lays down heavier pigment than pencil; pressure scales opacity wide
+	if tools.pressure_enabled:
+		return clampf(lerp(0.35, 0.95, tools.current_pressure), 0.15, 1.0)
+	return 0.6
+
+func _crayon_grain(x: int, y: int) -> float:
+	# Combine a stable hash, a coarse cellular variation, and subtle banding
+	var n: int = x * 1103515245 + y * 12345
+	n = int(n ^ (n >> 13)) * 196314165
+	n = int(n ^ (n >> 16))
+	var h: float = float(n & 0xFF) / 255.0
+	# Coarse blockiness to mimic wax catching on paper tooth
+	var block: float = float((((x >> 2) * 73) ^ ((y >> 2) * 151)) & 255) / 255.0
+	# Subtle directional streaks
+	var streak: float = abs(sin(float(x + y) * 0.025))
+	# Mix with weights; bias up so interior is richly textured, not just edges
+	return clampf(0.35 * h + 0.45 * block + 0.30 * streak, 0.0, 1.4)
+
+func _fill_rect_crayon_unsafe(tl: Vector2i, sz: Vector2i, col: Color) -> void:
+	var x0: int = clampi(tl.x, 0, drawing_rect.size.x - 1)
+	var y0: int = clampi(tl.y, 0, drawing_rect.size.y - 1)
+	var x1: int = clampi(tl.x + sz.x - 1, 0, drawing_rect.size.x - 1)
+	var y1: int = clampi(tl.y + sz.y - 1, 0, drawing_rect.size.y - 1)
+	var base: float = _crayon_base_alpha()
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			# Strong interior texture; slightly stronger toward center
+			var cx: float = (x0 + x1) * 0.5
+			var cy: float = (y0 + y1) * 0.5
+			var dx: float = abs(float(x) - cx)
+			var dy: float = abs(float(y) - cy)
+			var mx: float = max(1.0, float(x1 - x0))
+			var my: float = max(1.0, float(y1 - y0))
+			var center_boost: float = 1.0 - 0.35 * ((dx / (mx * 0.5)) + (dy / (my * 0.5)))
+			var a: float = base * _crayon_grain(x, y) * clampf(center_boost, 0.6, 1.25)
+			_blend_pixel(x, y, col, a)
+
+func _fill_circle_crayon_unsafe(center: Vector2i, r: int, col: Color) -> void:
+	if r <= 0:
+		return
+	var r2: int = r * r
+	var minx: int = clampi(center.x - r, 0, drawing_rect.size.x - 1)
+	var maxx: int = clampi(center.x + r, 0, drawing_rect.size.x - 1)
+	var miny: int = clampi(center.y - r, 0, drawing_rect.size.y - 1)
+	var maxy: int = clampi(center.y + r, 0, drawing_rect.size.y - 1)
+	var base: float = _crayon_base_alpha()
+	for y in range(miny, maxy + 1):
+		var dy: int = y - center.y
+		var dy2: int = dy * dy
+		for x in range(minx, maxx + 1):
+			var dx: int = x - center.x
+			var d2 := dx * dx + dy2
+			if d2 <= r2:
+				# Inside the circle, crayon should be rich throughout, not just edges
+				var t: float = 1.0 - float(d2) / float(r2)  # 1 at center -> 0 at edge
+				# Mild center emphasis, but keep edge coverage
+				var center_boost: float = 0.8 + 0.4 * t
+				var a: float = base * _crayon_grain(x, y) * center_boost
+				_blend_pixel(x, y, col, a)
+
 func _update_texture() -> void:
 	canvas.canvas_tex.update(canvas.canvas_img)
 	# Mark that an image update occurred; emission is throttled from _process
@@ -593,7 +661,7 @@ func _set_zoom(target: float, pivot_vp: Vector2) -> void:
 
 func _begin_record() -> void:
 	_current_record.clear()
-	if tools.brush_mode == BrushModes.PEN or tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.ERASER:
+	if tools.brush_mode == BrushModes.PEN or tools.brush_mode == BrushModes.PENCIL or tools.brush_mode == BrushModes.CRAYON or tools.brush_mode == BrushModes.ERASER:
 		var rec: Dictionary = {
 			"kind": "stroke",
 			"brush_type": tools.brush_mode,

@@ -88,7 +88,7 @@ func serialize() -> Dictionary:
 	var img_b64: String = Marshalls.raw_to_base64(img_bytes)
 
 	var data: Dictionary = {
-		"version": 1,
+		"version": 2,
 		"canvas_resolution": [int(canvas_resolution.x), int(canvas_resolution.y)],
 		"bg_color": _color_to_html(bg_color),
 		"canvas_name": canvas_name,
@@ -123,7 +123,7 @@ static func deserialize(data: Dictionary) -> PaintCanvasState:
 			s.canvas_resolution = Vector2(img.get_size())
 			s.canvas_tex = ImageTexture.create_from_image(img)
 	# Restore brush logs
-	s.brush_data_list = _deserialize_brush_log(data.get("brush_data_list", []))
+	s.brush_data_list = _deserialize_brush_log(data.get("brush_data_list", []), _ver)
 	# Clear undo/redo stacks on load
 	s.undo_stack.clear()
 	s.redo_stack.clear()
@@ -186,7 +186,7 @@ static func _serialize_brush_log(log_items: Array) -> Array:
 		out.append(base)
 	return out
 
-static func _deserialize_brush_log(arr: Array) -> Array:
+static func _deserialize_brush_log(arr: Array, ver: int = 1) -> Array:
 	var out: Array = []
 	for rec in arr:
 		if typeof(rec) != TYPE_DICTIONARY:
@@ -195,7 +195,12 @@ static func _deserialize_brush_log(arr: Array) -> Array:
 		var base: Dictionary = {"kind": kind}
 		match kind:
 			"stroke":
-				base["brush_type"] = int(rec.get("brush_type", 0))
+				var bt: int = int(rec.get("brush_type", 0))
+				# Backward compatibility: prior to version 2, BrushModes had no CRAYON.
+				# Old indices were PEN=0, PENCIL=1, ERASER=2; new adds CRAYON=2, ERASER=3.
+				if ver <= 1 and bt >= 2:
+					bt += 1
+				base["brush_type"] = bt
 				base["brush_shape"] = int(rec.get("brush_shape", 0))
 				base["color"] = _html_to_color(String(rec.get("color", "#FFFFFFFF")))
 				base["base_size"] = int(rec.get("base_size", 1))
