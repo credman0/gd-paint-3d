@@ -140,7 +140,7 @@ func _sync_tabs() -> void:
 
 func _add_new_canvas() -> void:
 	var s := PaintCanvasState.new()
-	s.canvas_resolution = Vector2(1024, 768)
+	s.canvas_resolution = Vector2(1024, 1024)
 	s.init_canvas()
 	canvases.append(s)
 	# Default name for the new canvas lives in canvas state
@@ -803,3 +803,8 @@ func resize_active_canvas(new_w: int, new_h: int) -> void:
 	image_updated.emit(canvas.canvas_img)
 	canvas.emit_image_updated()
 	_emit_canvases_updated()
+
+# Remove all contents of the selected canvas
+func clear_canvas() -> void:
+	for _canvas in canvases:
+		_canvas.clear()

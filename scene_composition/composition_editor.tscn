@@ -29,11 +29,13 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="DepthLabel" type="Label" parent="HSplitContainer/Sidebar"]
+visible = false
 layout_mode = 2
 text = "Depth"
 
 [node name="DepthSlider" type="HSlider" parent="HSplitContainer/Sidebar"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = -1.0
@@ -52,7 +54,7 @@ stretch = true
 
 [node name="SubViewport" type="SubViewport" parent="HSplitContainer/AspectRatioContainer/MarginContainer/SubViewportContainer"]
 handle_input_locally = false
-size = Vector2i(648, 648)
+size = Vector2i(800, 800)
 render_target_update_mode = 4
 
 [node name="CompositedScene" parent="HSplitContainer/AspectRatioContainer/MarginContainer/SubViewportContainer/SubViewport" instance=ExtResource("1_3wogf")]

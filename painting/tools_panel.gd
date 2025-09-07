@@ -120,7 +120,7 @@ func button_pressed(button_name):
 
 	# If a opperation button is pressed
 	elif button_name == "clear_picture":
-		paint_control.brush_data_list = []
+		paint_control.clear_canvas()
 		paint_control.queue_redraw()
 	elif button_name == "export_picture":
 		export_dialog.popup_centered()

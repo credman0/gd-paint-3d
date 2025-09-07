@@ -224,3 +224,11 @@ static func _deserialize_brush_log(arr: Array) -> Array:
 					base[k] = rec[k]
 		out.append(base)
 	return out
+
+
+func clear() -> void:
+	# lazy but effective
+	var temp = canvas_tex
+	init_canvas()
+	canvas_tex = temp
+	canvas_tex.set_image(canvas_img)
