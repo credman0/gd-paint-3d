@@ -1,0 +1,3 @@
+[gd_scene format=3 uid="uid://cy4j0l5tttmtq"]
+
+[node name="CompositedScene" type="Node3D"]

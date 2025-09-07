@@ -1,11 +1,8 @@
-[gd_scene load_steps=10 format=3 uid="uid://bhjmyer4wlwy2"]
+[gd_scene load_steps=9 format=3 uid="uid://bhjmyer4wlwy2"]
 
 [ext_resource type="Script" uid="uid://dfw825s4bfqni" path="res://painting/paint_control.gd" id="1"]
 [ext_resource type="Script" uid="uid://de0tx6ipr51rl" path="res://painting/tools_panel.gd" id="2"]
 [ext_resource type="Texture2D" uid="uid://cdqq0m3rrlbva" path="res://paint_tools.png" id="3"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4ksjc"]
-bg_color = Color(1, 1, 1, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_npkcn"]
 bg_color = Color(0.2, 0.2, 0.2, 1)
@@ -33,17 +30,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-
-[node name="DrawingAreaBG" type="Panel" parent="."]
-layout_mode = 0
-anchor_left = 0.342
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -0.208008
-grow_horizontal = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_4ksjc")
-metadata/_edit_layout_mode = 1
-metadata/_edit_use_custom_anchors = true
 
 [node name="DrawingArea" type="TextureRect" parent="."]
 layout_mode = 0

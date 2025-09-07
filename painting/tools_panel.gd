@@ -35,6 +35,8 @@ func _ready():
 
 	# Set physics process so we can update the status label.
 	set_physics_process(true)
+	# Ensure we receive global key events for shortcuts like Ctrl+Z.
+	set_process_unhandled_input(true)
 
 
 func _physics_process(_delta):
@@ -114,3 +116,10 @@ func brush_size_changed(value):
 func save_file_selected(path):
 	# Call save_picture in paint_control, passing in the path we recieved from SaveFileDialog.
 	paint_control.save_picture(path)
+
+
+func _unhandled_input(event):
+	# Trigger undo when Ctrl+Z (or Cmd+Z) is pressed.
+	if event is InputEventKey and event.pressed and not event.echo:
+		if (event.ctrl_pressed or event.meta_pressed) and event.keycode == KEY_Z:
+			paint_control.undo_stroke()

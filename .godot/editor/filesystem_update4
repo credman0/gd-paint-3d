@@ -7,3 +7,4 @@ res://painting/paint_control.gd
 res://painting/paint_root.tscn
 res://scene_composition/composited_scene.tscn
 res://main/main.tscn
+res://painting/tools_panel.gd
