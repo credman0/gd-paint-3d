@@ -9,3 +9,4 @@ res://scene_composition/composited_scene.tscn
 res://main/main.tscn
 res://painting/tools_panel.gd
 res://scene_composition/painted_layer.gd
+res://painting/tools_panel.tscn

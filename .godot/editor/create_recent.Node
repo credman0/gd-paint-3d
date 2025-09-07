@@ -1,6 +1,8 @@
+VBoxContainer
 MarginContainer
-Control
+CenterContainer
 HBoxContainer
+Control
 TabBar
 TabContainer
 MeshInstance3D

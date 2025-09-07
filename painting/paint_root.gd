@@ -1,6 +1,7 @@
 extends Control
 
 signal image_updated(image: Image)
+signal active_canvas_changed(index: int, title: String)
 
 const UNDO_NONE := -1
 
@@ -11,7 +12,7 @@ enum BrushModes { PEN, PENCIL, ERASER, CIRCLE_SHAPE, RECTANGLE_SHAPE }
 enum BrushShapes { RECTANGLE, CIRCLE }
 
 @onready var drawing_area: TextureRect = $"DrawingArea" # TextureRect
-@onready var canvas_tabs: TabBar = %CanvasTabs
+@onready var canvas_tabs: TabBar = %CanvasTabBar
 var drawing_rect: Rect2i
 
 # View transform (pan/zoom)
@@ -22,8 +23,12 @@ var view_origin: Vector2 = Vector2.ZERO # top-left of the canvas in viewport coo
 var panning: bool = false
 
 # State holders
+# Multiple canvases managed via tabs; `canvas` always points to the active one
+var canvases: Array[PaintCanvasState] = []
+var active_canvas_index: int = -1
 var canvas: PaintCanvasState
 var tools: PaintToolsState
+var canvas_names: Array[String] = []
 
 # Public proxy properties (map to tools/canvas)
 var brush_mode: int:
@@ -71,13 +76,10 @@ var _current_record: Dictionary = {}
 
 func _ready() -> void:
 	Input.use_accumulated_input = false
-	canvas = PaintCanvasState.new()
 	tools = PaintToolsState.new()
-	# Initialize canvas resolution and sync bg color -> tools
-	canvas.canvas_resolution = Vector2(1024, 768)
-	canvas.init_canvas()
-	tools.bg_color = canvas.bg_color
-	_init_canvas()
+	# Tabs: create initial canvas and wire up switching
+	canvas_tabs.tab_selected.connect(_on_canvas_tabs_tab_selected)
+	_add_new_canvas()
 	# Initialize view origin to current placement of DrawingArea (if any), then apply transform
 	view_origin = drawing_area.position
 	_apply_view_transform()
@@ -89,6 +91,85 @@ func _init_canvas() -> void:
 	# Ensure the TextureRect matches logical canvas pixel size; scale is applied separately via zoom
 	drawing_area.size = Vector2(drawing_rect.size)
 	_apply_view_transform()
+
+# ---- Multi-canvas management -----------------------------------------------
+
+func _sync_tabs() -> void:
+	# Rebuild tabs: one per canvas + a trailing '+' tab
+	canvas_tabs.clear_tabs()
+	# Ensure names array stays in sync in length
+	while canvas_names.size() < canvases.size():
+		canvas_names.append("Canvas %d" % (canvas_names.size() + 1))
+	while canvas_names.size() > canvases.size():
+		canvas_names.pop_back()
+
+	for i in range(canvases.size()):
+		var title := canvas_names[i] if i < canvas_names.size() else "Canvas %d" % (i + 1)
+		canvas_tabs.add_tab(title)
+	canvas_tabs.add_tab("+")
+	# Keep selection on the active canvas (not the '+')
+	if active_canvas_index >= 0 and active_canvas_index < canvases.size():
+		canvas_tabs.current_tab = active_canvas_index
+
+func _add_new_canvas() -> void:
+	var s := PaintCanvasState.new()
+	s.canvas_resolution = Vector2(1024, 768)
+	s.init_canvas()
+	canvases.append(s)
+	# Default name for the new canvas
+	canvas_names.append("Canvas %d" % canvases.size())
+	_set_active_canvas(canvases.size() - 1)
+	_sync_tabs()
+
+func _set_active_canvas(idx: int) -> void:
+	if canvases.is_empty():
+		return
+	idx = clampi(idx, 0, canvases.size() - 1)
+	active_canvas_index = idx
+	canvas = canvases[idx]
+	# Sync tool bg color with active canvas
+	if tools != null:
+		tools.bg_color = canvas.bg_color
+	# Re-bind drawing area to active canvas
+	_init_canvas()
+	# Ensure tab selection matches
+	if canvas_tabs.get_tab_count() > 0 and active_canvas_index < canvas_tabs.get_tab_count() and canvas_tabs.current_tab != active_canvas_index:
+		canvas_tabs.current_tab = active_canvas_index
+	# Notify listeners (e.g., tools panel) about active canvas change
+	var title := canvas_names[active_canvas_index] if active_canvas_index >= 0 and active_canvas_index < canvas_names.size() else ""
+	active_canvas_changed.emit(active_canvas_index, title)
+
+func _on_canvas_tabs_tab_selected(idx: int) -> void:
+	# If the '+' tab is clicked, create a new canvas instead of selecting it
+	if idx == canvases.size():
+		_add_new_canvas()
+		return
+	_set_active_canvas(idx)
+
+func rename_active_canvas(title: String) -> void:
+	if canvases.is_empty() or active_canvas_index < 0:
+		return
+	title = title.strip_edges()
+	if title.is_empty():
+		title = "Untitled"
+	if active_canvas_index >= canvas_names.size():
+		# Grow names array defensively
+		while canvas_names.size() < active_canvas_index:
+			canvas_names.append("Canvas %d" % (canvas_names.size() + 1))
+		canvas_names.append(title)
+	else:
+		canvas_names[active_canvas_index] = title
+	# Update tabbar title (avoid touching the trailing '+')
+	if active_canvas_index < canvas_tabs.get_tab_count():
+		canvas_tabs.set_tab_title(active_canvas_index, title)
+	active_canvas_changed.emit(active_canvas_index, title)
+
+func get_active_canvas_title() -> String:
+	if canvases.is_empty() or active_canvas_index < 0:
+		return ""
+	if active_canvas_index < canvas_names.size():
+		return canvas_names[active_canvas_index]
+	return "Canvas %d" % (active_canvas_index + 1)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:

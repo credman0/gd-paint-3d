@@ -1,10 +1,11 @@
 extends Panel
 
-@onready var brush_settings = $BrushSettings
-@onready var label_brush_size = brush_settings.get_node(^"LabelBrushSize")
-@onready var label_brush_shape = brush_settings.get_node(^"LabelBrushShape")
-@onready var label_stats = $LabelStats
-@onready var label_tools = $LabelTools
+@onready var brush_settings = %BrushSettings
+@onready var label_brush_size = %LabelBrushSize
+@onready var label_brush_shape = %LabelBrushShape
+@onready var label_stats = %LabelStats
+@onready var label_tools = %LabelTools
+@onready var tab_name_line_edit: LineEdit = %TabNameLineEdit
 
 @onready var _parent = get_parent()
 @onready var save_dialog = _parent.get_parent().get_node(^"SaveFileDialog")
@@ -12,23 +13,23 @@ extends Panel
 
 func _ready():
 	# Assign all of the needed signals for the oppersation buttons.
-	$ButtonUndo.pressed.connect(button_pressed.bind("undo_stroke"))
-	$ButtonSave.pressed.connect(button_pressed.bind("save_picture"))
-	$ButtonClear.pressed.connect(button_pressed.bind("clear_picture"))
+	%ButtonUndo.pressed.connect(button_pressed.bind("undo_stroke"))
+	%ButtonSave.pressed.connect(button_pressed.bind("save_picture"))
+	%ButtonClear.pressed.connect(button_pressed.bind("clear_picture"))
 
 	# Assign all of the needed signals for the brush buttons.
-	$ButtonToolPen.pressed.connect(button_pressed.bind("mode_pen"))
-	$ButtonToolPencil.pressed.connect(button_pressed.bind("mode_pencil"))
-	$ButtonToolEraser.pressed.connect(button_pressed.bind("mode_eraser"))
-	$ButtonToolRectangle.pressed.connect(button_pressed.bind("mode_rectangle"))
-	$ButtonToolCircle.pressed.connect(button_pressed.bind("mode_circle"))
-	$BrushSettings/ButtonShapeBox.pressed.connect(button_pressed.bind("shape_rectangle"))
-	$BrushSettings/ButtonShapeCircle.pressed.connect(button_pressed.bind("shape_circle"))
+	%ButtonToolPen.pressed.connect(button_pressed.bind("mode_pen"))
+	%ButtonToolPencil.pressed.connect(button_pressed.bind("mode_pencil"))
+	%ButtonToolEraser.pressed.connect(button_pressed.bind("mode_eraser"))
+	%ButtonToolRectangle.pressed.connect(button_pressed.bind("mode_rectangle"))
+	%ButtonToolCircle.pressed.connect(button_pressed.bind("mode_circle"))
+	%ButtonShapeBox.pressed.connect(button_pressed.bind("shape_rectangle"))
+	%ButtonShapeCircle.pressed.connect(button_pressed.bind("shape_circle"))
 
 	# Assign all of the needed signals for the other brush settings (and ColorPickerBackground).
-	$ColorPickerBrush.color_changed.connect(brush_color_changed)
-	$ColorPickerBackground.color_changed.connect(background_color_changed)
-	$BrushSettings/HScrollBarBrushSize.value_changed.connect(brush_size_changed)
+	%ColorPickerBrush.color_changed.connect(brush_color_changed)
+	%ColorPickerBackground.color_changed.connect(background_color_changed)
+	%HScrollBarBrushSize.value_changed.connect(brush_size_changed)
 
 	# Assign the "file_selected" signal in SaveFileDialog.
 	save_dialog.file_selected.connect(save_file_selected)
@@ -37,6 +38,17 @@ func _ready():
 	set_physics_process(true)
 	# Ensure we receive global key events for shortcuts like Ctrl+Z.
 	set_process_unhandled_input(true)
+
+	# Connect tab name LineEdit if assigned
+	if tab_name_line_edit:
+		tab_name_line_edit.text_submitted.connect(_on_tab_name_submitted)
+		tab_name_line_edit.focus_exited.connect(_on_tab_name_focus_exited)
+		# Initialize its text to current active canvas title
+		if paint_control.has_method(&"get_active_canvas_title"):
+			tab_name_line_edit.text = paint_control.get_active_canvas_title()
+	# React to active canvas changes to keep text in sync
+	if paint_control.has_signal(&"active_canvas_changed"):
+		paint_control.active_canvas_changed.connect(_on_active_canvas_changed)
 
 
 func _physics_process(_delta):
@@ -123,3 +135,20 @@ func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo:
 		if (event.ctrl_pressed or event.meta_pressed) and event.keycode == KEY_Z:
 			paint_control.undo_stroke()
+
+
+func _on_tab_name_submitted(txt: String) -> void:
+	if paint_control and paint_control.has_method(&"rename_active_canvas"):
+		paint_control.rename_active_canvas(txt)
+		# keep LineEdit text normalized by whatever rename applied
+		if tab_name_line_edit and paint_control.has_method(&"get_active_canvas_title"):
+			tab_name_line_edit.text = paint_control.get_active_canvas_title()
+
+func _on_tab_name_focus_exited() -> void:
+	# Commit any edits on focus loss
+	if tab_name_line_edit:
+		_on_tab_name_submitted(tab_name_line_edit.text)
+
+func _on_active_canvas_changed(_idx: int, title: String) -> void:
+	if tab_name_line_edit:
+		tab_name_line_edit.text = title
