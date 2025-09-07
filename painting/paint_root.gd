@@ -382,9 +382,10 @@ func _fill_circle_textured_unsafe(center: Vector2i, r: int, col: Color) -> void:
 			var dx: int = x - center.x
 			var d2 := dx * dx + dy2
 			if d2 <= r2:
-				# Soft falloff near the edge
+				# Sharper falloff near the edge for clearer definition
 				var t := 1.0 - sqrt(float(d2)) / float(r)
 				t = clampf(t, 0.0, 1.0)
+				t = t * t  # Quadratic for sharper falloff
 				var a := base_alpha * (0.5 + 0.5 * t) * _pencil_grain(x, y)
 				_blend_pixel(x, y, col, a)
 

@@ -23,12 +23,6 @@ config/icon="res://icon.webp"
 
 gdscript/warnings/redundant_await=false
 
-[display]
-
-window/stretch/mode="viewport"
-window/stretch/aspect="keep_height"
-window/stretch/scale_mode="integer"
-
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
